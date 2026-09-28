@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resumo do credenciamento | BRACIS 2026</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/app.js"></script>
+</head>
+<body data-page="summary">
+  <header class="site-header">
+    <a class="site-brand" href="/painel/resumo" aria-label="BRACIS 2026 — resumo do credenciamento">
+      <img src="/assets/bracis-2026-logo.png" alt="BRACIS 2026">
+      <span class="site-brand-label">Credenciamento</span>
+    </a>
+    <nav class="header-right" aria-label="Área da equipe">
+      <span id="user-label" class="user-label"></span>
+      <div id="team-links" class="team-links"></div>
+      <button class="button small secondary" id="logout">Sair</button>
+    </nav>
+  </header>
+  <main class="summary-main">
+    <div class="page-heading">
+      <div>
+        <p class="page-context">BRACIS 2026</p>
+        <h1 class="page-title">PAINEL DO CREDENCIAMENTO</h1>
+      </div>
+    </div>
+    <p id="page-error" class="alert hidden" role="alert"></p>
+    <div class="summary-stats">
+      <section class="summary-stat"><strong id="stat-total">—</strong><h2>Inscritos</h2></section>
+      <section class="summary-stat"><strong id="stat-arrived">—</strong><h2>Chegaram ao evento</h2></section>
+      <section class="summary-stat"><strong id="stat-completed">—</strong><h2>Participantes credenciados</h2></section>
+    </div>
+  </main>
+</body>
+</html>

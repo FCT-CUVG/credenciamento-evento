@@ -6,10 +6,10 @@ Sistema local para pré-check-in, busca de kits, atendimento em guichês e acomp
 
 1. Participante abre `/` pelo QR Code, informa nome completo e e-mail da inscrição e confirma presença.
 2. Voluntário abre `/busca`, assume uma pessoa, busca o kit e marca que o deixou no guichê mostrado no cartão.
-3. Atendente abre `/fila` e confirma a retirada após entregar o kit. A conta do atendente determina o guichê; a coordenação pode usar `/fila?guiche=1`.
-4. Coordenação abre `/painel` para totais, situação individual e estado da sincronização.
+3. Atendente abre `/fila` e confirma a retirada após entregar o kit. A conta do atendente determina o guichê inicial; o menu permite consultar outros guichês, mas cada atendente só pode confirmar entregas do próprio guichê.
+4. Toda a equipe pode abrir `/painel/resumo` para acompanhar inscritos, pessoas que chegaram e participantes credenciados. A coordenação usa `/painel` para ver também as etapas intermediárias, a lista individual e o estado da sincronização.
 
-As telas da equipe exigem conta e senha. O participante nunca vê a lista completa nem o CPF. A fila atualiza automaticamente a cada cinco segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
+As telas da equipe exigem conta e senha. O menu da equipe mostra todos os guichês de `config/guiches.json`, além dos guichês atribuídos diretamente a participantes ou atendentes. O participante nunca vê a lista completa nem o CPF. A fila atualiza automaticamente a cada cinco segundos; os painéis, a cada dez segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
 
 ## Identidade visual
 

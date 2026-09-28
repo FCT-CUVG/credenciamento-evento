@@ -64,6 +64,25 @@ def guiche_for(name):
     return matches[0]
 
 
+def available_guiches(db):
+    """List configured desks, including desks assigned explicitly to participants or staff."""
+    try:
+        ranges = json.loads(RANGES.read_text(encoding="utf-8"))["ranges"]
+    except (OSError, ValueError, KeyError) as exc:
+        raise ValueError(f"Configuração de guichês inválida: {RANGES}") from exc
+    desks = {}
+    for item in ranges:
+        desk = str(item["guiche"]).strip()
+        if desk:
+            desks.setdefault(desk, []).append(f'{str(item["from"]).upper()}–{str(item["to"]).upper()}')
+    for row in db.execute("SELECT guiche FROM participants UNION SELECT guiche FROM users"):
+        desk = row["guiche"].strip()
+        if desk:
+            desks.setdefault(desk, [])
+    return [{"id": desk, "ranges": labels} for desk, labels in sorted(
+        desks.items(), key=lambda entry: (0, int(entry[0])) if entry[0].isdigit() else (1, entry[0].casefold()))]
+
+
 def connect():
     DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(DATA, 0o700)
@@ -252,7 +271,7 @@ class App(BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             return self.api_get(path)
         routes = {"/": "index.html", "/busca": "busca.html", "/fila": "fila.html",
-                  "/painel": "painel.html", "/login": "login.html",
+                  "/painel": "painel.html", "/painel/resumo": "resumo.html", "/login": "login.html",
                   "/app.css": "app.css", "/app.js": "app.js",
                   "/assets/bracis-2026-logo.png": "assets/bracis-2026-logo.png",
                   "/assets/bebas-neue.woff2": "assets/bebas-neue.woff2",
@@ -282,12 +301,20 @@ class App(BaseHTTPRequestHandler):
                 return self.respond(200, {"user": None})
             csrf = hmac.new(SECRET, (user["username"] + ":csrf").encode(), hashlib.sha256).hexdigest()
             return self.respond(200, {"user": user, "csrf": csrf})
+        if path == "/api/guiches":
+            user = self.require(("volunteer", "attendant", "admin"))
+            if not user:
+                return
+            with connect() as db:
+                desks = available_guiches(db)
+            return self.respond(200, {"guiches": desks})
         if path == "/api/queue":
             user = self.require(("volunteer", "attendant", "admin"))
             if not user:
                 return
-            guiche = parse_qs(urlparse(self.path).query).get("guiche", [""])[0].strip()
-            if user["role"] == "attendant":
+            requested = parse_qs(urlparse(self.path).query).get("guiche", [""])[0].strip()
+            guiche = "" if requested == "all" else requested
+            if user["role"] == "attendant" and not requested:
                 guiche = user["guiche"]
             with connect() as db:
                 query = "SELECT * FROM participants WHERE status IN ('prechecked','searching','ready')"
@@ -298,6 +325,18 @@ class App(BaseHTTPRequestHandler):
                 query += " ORDER BY prechecked_at ASC, name_key ASC"
                 rows = db.execute(query, args).fetchall()
             return self.respond(200, {"items": [participant_dict(r) for r in rows], "guiche": guiche})
+        if path == "/api/dashboard/summary":
+            user = self.require(("volunteer", "attendant", "admin"))
+            if not user:
+                return
+            with connect() as db:
+                total, arrived, completed = db.execute("""
+                    SELECT COUNT(*),
+                           COALESCE(SUM(status <> 'registered'), 0),
+                           COALESCE(SUM(status = 'completed'), 0)
+                    FROM participants
+                """).fetchone()
+            return self.respond(200, {"total": total, "arrived": arrived, "completed": completed})
         if path == "/api/dashboard":
             user = self.require(("admin",))
             if not user:

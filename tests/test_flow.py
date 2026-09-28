@@ -103,6 +103,8 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(code, 200)
         code, panel, _ = self.request("/api/dashboard", cookie=self.login("admin")[0])
         self.assertEqual((panel["total"], panel["counts"]["completed"]), (2, 1))
+        code, summary, _ = self.request("/api/dashboard/summary", cookie=users[0][0])
+        self.assertEqual((code, summary), (200, {"total": 2, "arrived": 1, "completed": 1}))
         self.assertEqual(len(app.CSV.read_text(encoding="utf-8").splitlines()), 3)
         with app.connect() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM events WHERE participant_id=?", (pid,)).fetchone()[0], 5)
@@ -112,9 +114,34 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(code, 404)
         code, _, _ = self.request("/api/dashboard")
         self.assertEqual(code, 401)
+        code, _, _ = self.request("/api/dashboard/summary")
+        self.assertEqual(code, 401)
+
+    def test_attendant_can_view_other_desks_but_only_complete_own(self):
+        input_file = Path(self.temp.name) / "extra-desk.json"
+        input_file.write_text(json.dumps([
+            {"name": "Bruno Lima", "email": "bruno@example.org", "guiche": "7"}
+        ]), encoding="utf-8")
+        app.import_file(input_file)
+        attendant = self.login("att1")
+        code, desks, _ = self.request("/api/guiches", cookie=attendant[0])
+        self.assertEqual(code, 200)
+        self.assertIn({"id": "7", "ranges": []}, desks["guiches"])
+        code, found, _ = self.request("/api/lookup", {"name": "Bruno Lima", "email": "bruno@example.org"})
+        self.assertEqual(code, 200)
+        self.request("/api/precheck", {"token": found["token"]})
+        with app.connect() as db:
+            pid = db.execute("SELECT id FROM participants WHERE name_key='bruno lima'").fetchone()[0]
+        volunteer = self.login("vol1")
+        self.assertEqual(self.request("/api/action/claim", {"id": pid}, *volunteer)[0], 200)
+        self.assertEqual(self.request("/api/action/ready", {"id": pid}, *volunteer)[0], 200)
+        code, queue, _ = self.request("/api/queue?guiche=7", cookie=attendant[0])
+        self.assertEqual((code, [item["id"] for item in queue["items"]]), (200, [pid]))
+        self.assertEqual(self.request("/api/action/complete", {"id": pid}, *attendant)[0], 409)
 
     def test_brand_assets_and_pages_are_served_locally(self):
-        for path, expected_type in (("/", "text/html"), ("/app.css", "text/css"),
+        for path, expected_type in (("/", "text/html"), ("/painel/resumo", "text/html"),
+                                    ("/app.css", "text/css"),
                                     ("/assets/bracis-2026-logo.png", "image/png"),
                                     ("/assets/bebas-neue.woff2", "font/woff2"),
                                     ("/assets/noto-sans.woff2", "font/woff2")):

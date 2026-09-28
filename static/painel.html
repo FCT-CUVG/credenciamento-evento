@@ -15,8 +15,7 @@
     </a>
     <nav class="header-right" aria-label="Área da equipe">
       <span id="user-label" class="user-label"></span>
-      <a href="/busca">Separação</a>
-      <a href="/fila">Guichês</a>
+      <div id="team-links" class="team-links"></div>
       <button class="button small secondary" id="logout">Sair</button>
     </nav>
   </header>
@@ -25,7 +24,7 @@
       <div>
         <p class="page-context">Coordenação · BRACIS 2026</p>
         <h1 class="page-title">PAINEL DO CREDENCIAMENTO</h1>
-        <p>Acompanhe quem chegou, onde está cada crachá e kit, e as retiradas concluídas.</p>
+        <p>Acompanhe quem chegou, onde está cada crachá e kit, e os participantes credenciados.</p>
       </div>
     </div>
     <div class="stats">
@@ -33,7 +32,7 @@
       <div class="stat"><strong id="stat-prechecked">—</strong><span>Chegaram ao evento</span></div>
       <div class="stat"><strong id="stat-searching">—</strong><span>Em busca</span></div>
       <div class="stat"><strong id="stat-ready">—</strong><span>Prontos no guichê</span></div>
-      <div class="stat"><strong id="stat-completed">—</strong><span>Retiradas concluídas</span></div>
+      <div class="stat"><strong id="stat-completed">—</strong><span>Participantes credenciados</span></div>
     </div>
     <p id="sync-status" class="muted"></p>
     <div class="toolbar">
@@ -44,7 +43,7 @@
         <option value="prechecked">Pré-check-in</option>
         <option value="searching">Em busca</option>
         <option value="ready">Prontos no guichê</option>
-        <option value="completed">Retiradas concluídas</option>
+        <option value="completed">Participantes credenciados</option>
       </select>
       <span id="list-count" class="muted"></span>
     </div>
