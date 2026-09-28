@@ -146,6 +146,11 @@ main { width: min(100%, 1500px); margin: 0 auto; padding: clamp(20px, 3vw, 42px)
 .queue-card .meta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 9px; }
 .guiche { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 13px; background: var(--navy); color: var(--white); border-radius: 4px; font-size: 1.02rem; font-weight: 850; }
 .queue-card .button { width: 100%; }
+.queue-actions { display: flex; align-items: stretch; gap: 9px; }
+.queue-actions .button { width: auto; min-width: 0; }
+.queue-actions .button.secondary { flex: 0 0 34%; padding-inline: 8px; }
+.queue-actions .button:not(.secondary) { flex: 1; font-size: 1.45rem; padding-inline: 8px; }
+.queue-actions .button:only-child { flex: 1; }
 .empty { padding: 26px 18px; border: 1px dashed #abb3c6; border-radius: 8px; text-align: center; color: var(--slate); font-weight: 650; background: rgba(255,255,255,.55); }
 
 .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 26px 0 14px; }
@@ -199,6 +204,9 @@ dialog .actions .button { flex: 1; }
   .form-panel { padding: 28px 24px; }
   .toolbar { display: grid; }
   .toolbar .field, .toolbar .search-input { min-width: 0; }
+  .queue-actions { gap: 6px; }
+  .queue-actions .button.secondary { font-size: .88rem; padding-inline: 5px; }
+  .queue-actions .button:not(.secondary) { font-size: 1.3rem; padding-inline: 5px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stat:last-child { grid-column: span 2; }
   .help-strip { display: block; }

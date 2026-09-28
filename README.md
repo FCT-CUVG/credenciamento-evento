@@ -9,7 +9,7 @@ Sistema local para pré-check-in, busca de kits, atendimento em guichês e acomp
 3. Atendente abre `/fila` e confirma a retirada após entregar o kit. A conta do atendente determina o guichê; a coordenação pode usar `/fila?guiche=1`.
 4. Coordenação abre `/painel` para totais, situação individual e estado da sincronização.
 
-As telas da equipe exigem conta e senha. O participante nunca vê a lista completa nem o CPF. A fila atualiza automaticamente a cada cinco segundos. As confirmações de entrega pedem um segundo clique.
+As telas da equipe exigem conta e senha. O participante nunca vê a lista completa nem o CPF. A fila atualiza automaticamente a cada cinco segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
 
 ## Identidade visual
 
