@@ -11,6 +11,10 @@ Sistema local para pré-check-in, busca de kits, atendimento em guichês e acomp
 
 As telas da equipe exigem conta e senha. O participante nunca vê a lista completa nem o CPF. A fila atualiza automaticamente a cada cinco segundos. As confirmações de entrega pedem um segundo clique.
 
+## Identidade visual
+
+As telas usam a marca **BRACIS 2026** e os arquivos de logo, Bebas Neue e Noto Sans copiados para `static/assets/` do tema local `bracis-edition`. Cores e hierarquia visual seguem o `theme.json` e o `DESIGN.md` desse tema. A interface de credenciamento permanece em português e usa os termos crachá, kit, busca e retirada de forma consistente.
+
 ## Preparação
 
 Revise [config/guiches.json](config/guiches.json) antes de importar a lista real. As faixas incluídas são **somente um exemplo**. Cada faixa inclui as letras inicial e final; nomes com acentos são normalizados. A importação falha se a inicial não estiver coberta por uma faixa única. Uma coluna `guiche` no arquivo pode substituir a regra para casos específicos.

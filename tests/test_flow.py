@@ -37,7 +37,7 @@ class FlowTest(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def request(self, path, data=None, cookie="", csrf=""):
+    def request(self, path, data=None, cookie="", csrf="", json_response=True):
         headers = Message()
         if cookie:
             headers["Cookie"] = cookie
@@ -63,7 +63,7 @@ class FlowTest(unittest.TestCase):
         head, payload = raw.split(b"\r\n\r\n", 1)
         first, rest = head.decode().split("\r\n", 1)
         parsed = Parser().parsestr(rest)
-        return int(first.split()[1]), json.loads(payload), parsed
+        return int(first.split()[1]), json.loads(payload) if json_response else payload, parsed
 
     def login(self, username):
         code, _, headers = self.request("/api/login", {"username": username, "password": "strong-password"})
@@ -112,6 +112,17 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(code, 404)
         code, _, _ = self.request("/api/dashboard")
         self.assertEqual(code, 401)
+
+    def test_brand_assets_and_pages_are_served_locally(self):
+        for path, expected_type in (("/", "text/html"), ("/app.css", "text/css"),
+                                    ("/assets/bracis-2026-logo.png", "image/png"),
+                                    ("/assets/bebas-neue.woff2", "font/woff2"),
+                                    ("/assets/noto-sans.woff2", "font/woff2")):
+            code, body, headers = self.request(path, json_response=False)
+            self.assertEqual(code, 200)
+            self.assertTrue(headers["Content-Type"].startswith(expected_type))
+            self.assertTrue(body)
+        self.assertIn(b"BRACIS 2026", self.request("/", json_response=False)[1])
 
     def test_reimport_changes_guiche_preserves_status(self):
         code, found, _ = self.request("/api/lookup", {"name": "Ana Silva", "email": "ana@example.org"})

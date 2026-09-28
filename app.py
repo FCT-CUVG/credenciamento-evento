@@ -253,14 +253,20 @@ class App(BaseHTTPRequestHandler):
             return self.api_get(path)
         routes = {"/": "index.html", "/busca": "busca.html", "/fila": "fila.html",
                   "/painel": "painel.html", "/login": "login.html",
-                  "/app.css": "app.css", "/app.js": "app.js"}
+                  "/app.css": "app.css", "/app.js": "app.js",
+                  "/assets/bracis-2026-logo.png": "assets/bracis-2026-logo.png",
+                  "/assets/bebas-neue.woff2": "assets/bebas-neue.woff2",
+                  "/assets/noto-sans.woff2": "assets/noto-sans.woff2"}
         filename = routes.get(path)
         if not filename:
             return self.send_error(404)
-        mime = "text/css" if filename.endswith(".css") else "text/javascript" if filename.endswith(".js") else "text/html"
+        mime = ("text/css" if filename.endswith(".css") else
+                "text/javascript" if filename.endswith(".js") else
+                "image/png" if filename.endswith(".png") else
+                "font/woff2" if filename.endswith(".woff2") else "text/html")
         body = (STATIC / filename).read_bytes()
         self.send_response(200)
-        self.send_header("Content-Type", mime + "; charset=utf-8")
+        self.send_header("Content-Type", mime + ("; charset=utf-8" if mime.startswith("text/") else ""))
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")

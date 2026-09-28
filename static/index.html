@@ -1,1 +1,66 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pré-check-in | BRACIS</title><link rel="stylesheet" href="/app.css"><script defer src="/app.js"></script></head><body data-page="public"><header><a class="brand" href="/">BRACIS<span>•</span> Credenciamento</a><span>Pré-check-in do participante</span></header><main class="public-main"><p class="eyebrow">Bem-vindo ao evento</p><h1 class="hero">Seu credenciamento começa aqui.</h1><p class="lead">Encontre sua inscrição, confirme sua presença e siga para o ponto de atendimento indicado pela equipe.</p><div class="steps"><div class="step"><strong>01</strong>Encontre seu cadastro</div><div class="step"><strong>02</strong>Confirme sua presença</div><div class="step"><strong>03</strong>Procure o atendimento</div></div><section class="card stack" id="public-search"><h2>Encontre sua inscrição</h2><form id="lookup-form" class="form"><label class="field">Nome completo<input name="name" autocomplete="name" required minlength="3" placeholder="Como aparece na inscrição"></label><label class="field">E-mail da inscrição<input name="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label><button class="button full" type="submit">Buscar minha inscrição</button></form><p id="lookup-error" class="alert hidden" role="alert"></p></section><section class="card stack hidden" id="public-confirm"><p class="eyebrow">Cadastro encontrado</p><h2 id="found-name" class="person-name"></h2><p id="found-affiliation" class="big muted"></p><p>Seus dados estão corretos? Confirme para avisar à equipe que você chegou.</p><button class="button full" id="precheck-button">Confirmar minha presença</button><button class="button secondary full" id="retry-button">Voltar e tentar novamente</button><p id="confirm-error" class="alert hidden" role="alert"></p></section><section class="card stack hidden" id="public-done"><p class="eyebrow">Presença confirmada</p><h2 class="person-name">Tudo certo, <span id="done-name"></span>!</h2><p class="lead">Dirija-se ao ponto de atendimento do credenciamento. Se precisar de ajuda, procure um voluntário para receber orientação.</p><button class="button secondary full" id="done-retry">Consultar outra inscrição</button></section></main><footer>Não encontrou sua inscrição? Confira nome e e-mail e tente novamente. Se o problema continuar, procure o atendimento ou um voluntário.</footer></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pré-check-in | BRACIS 2026</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/app.js"></script>
+</head>
+<body data-page="public">
+  <header class="site-header">
+    <a class="site-brand" href="/" aria-label="BRACIS 2026 — início do credenciamento">
+      <img src="/assets/bracis-2026-logo.png" alt="BRACIS 2026">
+      <span class="site-brand-label">Credenciamento</span>
+    </a>
+  </header>
+  <main class="public-main">
+    <div class="public-layout">
+      <section class="event-panel" aria-labelledby="public-title">
+        <p class="event-meta">BRACIS 2026 · CUIABÁ, MT</p>
+        <h1 id="public-title">CHEGOU AO BRACIS?</h1>
+        <p class="intro-copy">Faça seu pré-check-in para avisar à equipe que você já está no local. Depois, procure o atendimento para retirar seu crachá e kit.</p>
+        <ol class="journey">
+          <li><strong>1</strong> Localize sua inscrição</li>
+          <li><strong>2</strong> Confirme sua chegada</li>
+          <li><strong>3</strong> Procure o atendimento</li>
+        </ol>
+        <p class="event-date">19 a 22 de outubro de 2026 · Centro de Eventos do UniSENAI</p>
+      </section>
+      <div class="form-panel">
+        <section class="stack" id="public-search" aria-labelledby="search-title">
+          <h2 id="search-title">LOCALIZE SUA INSCRIÇÃO</h2>
+          <p class="field-intro">Use o nome completo e o e-mail informados na inscrição.</p>
+          <form id="lookup-form" class="form">
+            <label class="field">Nome completo
+              <input name="name" autocomplete="name" required minlength="3" placeholder="Como aparece na inscrição">
+            </label>
+            <label class="field">E-mail da inscrição
+              <input name="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com">
+            </label>
+            <button class="button full" type="submit">Buscar inscrição</button>
+          </form>
+          <p id="lookup-error" class="alert hidden" role="alert"></p>
+        </section>
+        <section class="stack hidden" id="public-confirm" aria-labelledby="found-name">
+          <p class="event-meta">INSCRIÇÃO LOCALIZADA</p>
+          <h2 id="found-name" class="person-name"></h2>
+          <p id="found-affiliation" class="big muted"></p>
+          <p>Confira seus dados. Ao confirmar, a equipe saberá que você chegou e poderá preparar seu crachá e kit.</p>
+          <button class="button full" id="precheck-button">Confirmar minha chegada</button>
+          <button class="button secondary full" id="retry-button">Corrigir a busca</button>
+          <p id="confirm-error" class="alert hidden" role="alert"></p>
+        </section>
+        <section class="stack hidden" id="public-done" aria-labelledby="done-title">
+          <p class="event-meta">PRÉ-CHECK-IN CONCLUÍDO</p>
+          <h2 id="done-title">PRESENÇA CONFIRMADA</h2>
+          <p class="person-name big" id="done-name"></p>
+          <p>Procure o atendimento do credenciamento para retirar seu crachá e kit. Se não souber para onde ir, peça orientação a um voluntário.</p>
+          <button class="button secondary full" id="done-retry">Consultar outra inscrição</button>
+        </section>
+      </div>
+    </div>
+    <div class="help-strip"><strong>Não encontrou sua inscrição?</strong><span>Confira nome e e-mail e tente novamente. Se precisar de ajuda, procure o atendimento ou um voluntário.</span></div>
+  </main>
+</body>
+</html>

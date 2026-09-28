@@ -1,1 +1,48 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Busca dos kits | BRACIS</title><link rel="stylesheet" href="/app.css"><script defer src="/app.js"></script></head><body data-page="volunteer"><header><a class="brand" href="/busca">BRACIS<span>•</span> Credenciamento</a><nav class="header-right"><span id="user-label"></span><a href="/fila">Guichê</a><a href="/painel">Painel</a><button class="button small secondary" id="logout">Sair</button></nav></header><main><p class="eyebrow">Equipe de apoio</p><h1 class="page-title">Busca dos kits</h1><p class="lead">Assuma uma pessoa antes de buscar o kit. Depois de entregar o material ao guichê indicado, marque como pronto.</p><div class="toolbar"><input id="queue-filter" class="search-input" type="search" placeholder="Filtrar por nome ou guichê" aria-label="Filtrar fila"><span class="muted" id="last-update"></span></div><p id="page-error" class="alert hidden" role="alert"></p><div class="lane-grid"><section class="lane"><h2>Para buscar <span id="count-prechecked"></span></h2><div class="queue-list" id="lane-prechecked"></div></section><section class="lane"><h2>Em busca <span id="count-searching"></span></h2><div class="queue-list" id="lane-searching"></div></section><section class="lane"><h2>No guichê <span id="count-ready"></span></h2><div class="queue-list" id="lane-ready"></div></section></div></main><dialog id="confirm-dialog"><h2 id="dialog-title"></h2><p id="dialog-description" class="big"></p><div class="actions"><button class="button secondary" id="dialog-cancel">Cancelar</button><button class="button" id="dialog-confirm">Confirmar</button></div></dialog></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Separação de crachás e kits | BRACIS 2026</title>
+  <link rel="stylesheet" href="/app.css">
+  <script defer src="/app.js"></script>
+</head>
+<body data-page="volunteer">
+  <header class="site-header">
+    <a class="site-brand" href="/busca" aria-label="BRACIS 2026 — separação de crachás e kits">
+      <img src="/assets/bracis-2026-logo.png" alt="BRACIS 2026">
+      <span class="site-brand-label">Credenciamento</span>
+    </a>
+    <nav class="header-right" aria-label="Área da equipe">
+      <span id="user-label" class="user-label"></span>
+      <a href="/fila">Guichês</a>
+      <a href="/painel">Painel</a>
+      <button class="button small secondary" id="logout">Sair</button>
+    </nav>
+  </header>
+  <main>
+    <div class="page-heading">
+      <div>
+        <p class="page-context">Equipe de apoio · BRACIS 2026</p>
+        <h1 class="page-title">SEPARAÇÃO DE CRACHÁS E KITS</h1>
+        <p>Assuma uma busca antes de separar o material. Depois de deixá-lo no guichê indicado, marque como pronto.</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input id="queue-filter" class="search-input" type="search" placeholder="Filtrar por nome ou guichê" aria-label="Filtrar fila">
+      <span class="muted" id="last-update"></span>
+    </div>
+    <p id="page-error" class="alert hidden" role="alert"></p>
+    <div class="lane-grid">
+      <section class="lane"><h2>AGUARDANDO BUSCA <span id="count-prechecked"></span></h2><div class="queue-list" id="lane-prechecked"></div></section>
+      <section class="lane searching-lane"><h2>EM BUSCA <span id="count-searching"></span></h2><div class="queue-list" id="lane-searching"></div></section>
+      <section class="lane ready-lane"><h2>PRONTO NO GUICHÊ <span id="count-ready"></span></h2><div class="queue-list" id="lane-ready"></div></section>
+    </div>
+  </main>
+  <dialog id="confirm-dialog">
+    <h2 id="dialog-title"></h2>
+    <p id="dialog-description" class="big"></p>
+    <div class="actions"><button class="button secondary" id="dialog-cancel">Cancelar</button><button class="button" id="dialog-confirm">Confirmar</button></div>
+  </dialog>
+</body>
+</html>
