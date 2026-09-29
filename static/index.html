@@ -1,66 +1,58 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pré-check-in | BRACIS 2026</title>
+  <title>Check-in | {{EVENT_NAME}}</title>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/theme.css">
   <script defer src="/app.js"></script>
 </head>
 <body data-page="public">
   <header class="site-header">
-    <a class="site-brand" href="/" aria-label="BRACIS 2026 — início do credenciamento">
-      <img src="/assets/bracis-2026-logo.png" alt="BRACIS 2026">
-      <span class="site-brand-label">Credenciamento</span>
+    <a class="site-brand" href="/" aria-label="{{EVENT_NAME}} — check-in home">
+      <img src="{{EVENT_LOGO}}" alt="{{EVENT_NAME}}">
+      <span class="site-brand-label" data-i18n="brand">Check-in</span>
     </a>
+    <button class="language-switch" id="language-switch" type="button">Português (BR)</button>
   </header>
   <main class="public-main">
     <div class="public-layout">
       <section class="event-panel" aria-labelledby="public-title">
-        <p class="event-meta">BRACIS 2026 · CUIABÁ, MT</p>
-        <h1 id="public-title">CHEGOU AO BRACIS?</h1>
-        <p class="intro-copy">Faça seu pré-check-in para avisar à equipe que você já está no local. Depois, procure o atendimento para retirar seu crachá e kit.</p>
-        <ol class="journey">
-          <li><strong>1</strong> Localize sua inscrição</li>
-          <li><strong>2</strong> Confirme sua chegada</li>
-          <li><strong>3</strong> Procure o atendimento</li>
-        </ol>
-        <p class="event-date">19 a 22 de outubro de 2026 · Centro de Eventos do UniSENAI</p>
+        <h1 id="public-title" data-i18n="heroTitle">ARRIVED AT {{EVENT_SHORT_NAME}}?</h1>
+        <p class="intro-copy" data-i18n="heroIntro">Let the team know you've arrived. Then collect your badge and kit at the check-in desk.</p>
       </section>
       <div class="form-panel">
         <section class="stack" id="public-search" aria-labelledby="search-title">
-          <h2 id="search-title">LOCALIZE SUA INSCRIÇÃO</h2>
-          <p class="field-intro">Use o nome completo e o e-mail informados na inscrição.</p>
+          <h2 id="search-title" data-i18n="searchTitle">FIND YOUR REGISTRATION</h2>
+          <p class="field-intro" data-i18n="searchIntro">Use the CPF informado na inscrição.</p>
           <form id="lookup-form" class="form">
-            <label class="field">Nome completo
-              <input name="name" autocomplete="name" required minlength="3" placeholder="Como aparece na inscrição">
+            <label class="field"><span data-i18n="cpfLabel">CPF</span>
+              <input name="cpf" inputmode="numeric" autocomplete="off" required maxlength="14" placeholder="000.000.000-00" data-i18n-placeholder="cpfPlaceholder">
             </label>
-            <label class="field">E-mail da inscrição
-              <input name="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com">
-            </label>
-            <button class="button full" type="submit">Buscar inscrição</button>
+            <button class="button full" type="submit" data-i18n="searchButton">Find registration</button>
           </form>
           <p id="lookup-error" class="alert hidden" role="alert"></p>
         </section>
         <section class="stack hidden" id="public-confirm" aria-labelledby="found-name">
-          <p class="event-meta">INSCRIÇÃO LOCALIZADA</p>
+          <p class="event-meta" data-i18n="foundEyebrow">REGISTRATION FOUND</p>
           <h2 id="found-name" class="person-name"></h2>
           <p id="found-affiliation" class="big muted"></p>
-          <p>Confira seus dados. Ao confirmar, a equipe saberá que você chegou e poderá preparar seu crachá e kit.</p>
-          <button class="button full" id="precheck-button">Confirmar minha chegada</button>
-          <button class="button secondary full" id="retry-button">Corrigir a busca</button>
+          <p data-i18n="confirmIntro">Check your details. Confirm your arrival so the team can prepare your badge and kit.</p>
+          <button class="button full" id="precheck-button" data-i18n="confirmButton">Confirm my arrival</button>
+          <button class="button secondary full" id="retry-button" data-i18n="retryButton">Change search</button>
           <p id="confirm-error" class="alert hidden" role="alert"></p>
         </section>
         <section class="stack hidden" id="public-done" aria-labelledby="done-title">
-          <p class="event-meta">PRÉ-CHECK-IN CONCLUÍDO</p>
-          <h2 id="done-title">PRESENÇA CONFIRMADA</h2>
+          <p class="event-meta" data-i18n="doneEyebrow">PRE-CHECK-IN COMPLETE</p>
+          <h2 id="done-title" data-i18n="doneTitle">ARRIVAL CONFIRMED</h2>
           <p class="person-name big" id="done-name"></p>
-          <p>Procure o atendimento do credenciamento para retirar seu crachá e kit. Se não souber para onde ir, peça orientação a um voluntário.</p>
-          <button class="button secondary full" id="done-retry">Consultar outra inscrição</button>
+          <p data-i18n="doneIntro">Visit the check-in desk to collect your badge and kit. Ask a volunteer if you need directions.</p>
+          <button class="button secondary full" id="done-retry" data-i18n="doneRetry">Find another registration</button>
         </section>
       </div>
     </div>
-    <div class="help-strip"><strong>Não encontrou sua inscrição?</strong><span>Confira nome e e-mail e tente novamente. Se precisar de ajuda, procure o atendimento ou um voluntário.</span></div>
+    <div class="help-strip"><strong data-i18n="helpTitle">Can't find your registration?</strong><span data-i18n="helpText">Check the CPF and try again. If you need help, ask at the check-in desk or speak to a volunteer.</span></div>
   </main>
 </body>
 </html>

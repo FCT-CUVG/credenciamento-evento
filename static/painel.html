@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Painel do credenciamento | BRACIS 2026</title>
+  <title>Painel do credenciamento | {{EVENT_NAME}}</title>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/theme.css">
   <script defer src="/app.js"></script>
 </head>
 <body data-page="dashboard">
   <header class="site-header">
-    <a class="site-brand" href="/painel" aria-label="BRACIS 2026 — painel do credenciamento">
-      <img src="/assets/bracis-2026-logo.png" alt="BRACIS 2026">
+    <a class="site-brand" href="/painel" aria-label="{{EVENT_NAME}} — painel do credenciamento">
+      <img src="{{EVENT_LOGO}}" alt="{{EVENT_NAME}}">
       <span class="site-brand-label">Credenciamento</span>
     </a>
     <nav class="header-right" aria-label="Área da equipe">
@@ -22,7 +23,6 @@
   <main>
     <div class="page-heading">
       <div>
-        <p class="page-context">Coordenação · BRACIS 2026</p>
         <h1 class="page-title">PAINEL DO CREDENCIAMENTO</h1>
         <p>Acompanhe quem chegou, onde está cada crachá e kit, e os participantes credenciados.</p>
       </div>
@@ -35,23 +35,86 @@
       <div class="stat"><strong id="stat-completed">—</strong><span>Participantes credenciados</span></div>
     </div>
     <p id="sync-status" class="muted"></p>
+    <div class="dashboard-shortcuts">
+      <a href="#participants-tools-title">Importar dados de participantes</a>
+      <a href="#google-sheets-title">Configurar backup no Google Sheets</a>
+      <a href="#guiches-tools-title">Configurar guichês</a>
+    </div>
     <div class="toolbar">
       <input id="dashboard-filter" class="search-input" type="search" placeholder="Buscar por nome, e-mail ou guichê" aria-label="Filtrar participantes">
-      <select id="status-filter" class="search-input" aria-label="Filtrar situação">
-        <option value="">Todos os estados</option>
-        <option value="registered">Ainda não chegaram</option>
-        <option value="prechecked">Pré-check-in</option>
-        <option value="searching">Em busca</option>
-        <option value="ready">Prontos no guichê</option>
-        <option value="completed">Participantes credenciados</option>
-      </select>
+      <div class="dashboard-status-filter">
+        <label for="status-filter">Filtro</label>
+        <select id="status-filter" class="search-input">
+          <option value="">Todos os estados</option>
+          <option value="registered">Ainda não chegaram</option>
+          <option value="prechecked">Pré-check-in</option>
+          <option value="searching">Em busca</option>
+          <option value="ready">Prontos no guichê</option>
+          <option value="completed">Participantes credenciados</option>
+        </select>
+      </div>
       <span id="list-count" class="muted"></span>
+    </div>
+    <div class="dashboard-data-actions">
+      <a class="button secondary small" href="/api/participants/export" download="dados-participantes.csv">Exportar dados</a>
+      <a class="button secondary small" href="/api/events/export" download="logs-movimentacoes.csv">Exportar logs de movimentações</a>
     </div>
     <p id="page-error" class="alert hidden" role="alert"></p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Participante</th><th>E-mail</th><th>Afiliação</th><th>Guichê</th><th>Situação</th><th>Responsável</th></tr></thead>
+      <thead><tr><th>Participante</th><th>Nome no crachá</th><th>E-mail</th><th>CPF</th><th>Afiliação</th><th>Pagamento</th><th>Prioridade</th><th>Guichê</th><th>Situação</th><th>Responsável</th><th>Última movimentação</th></tr></thead>
       <tbody id="dashboard-body"></tbody>
     </table></div>
+    <div class="dashboard-tools">
+      <section class="card dashboard-tool" aria-labelledby="participants-tools-title">
+        <h2 id="participants-tools-title">Participantes</h2>
+        <p>Importe o mesmo CSV produzido em “Exportar dados”. Os dados cadastrais são atualizados sem apagar as etapas já concluídas.</p>
+        <div class="dashboard-tool-actions">
+          <a class="button secondary small" href="/api/participants/template" download="participantes-exemplo.csv">Baixar CSV de exemplo</a>
+        </div>
+        <form id="participants-import-form" class="import-form">
+          <ul class="import-fields muted">
+            <li><code>nome</code> - obrigatório, texto</li>
+            <li><code>nome_cracha</code> - obrigatório, texto</li>
+            <li><code>afiliacao</code> - obrigatório, texto</li>
+            <li><code>email</code> - obrigatório, texto</li>
+            <li><code>cpf</code> - obrigatório, 11 dígitos ou <code>xxx.xxx.xxx-xx</code></li>
+            <li><code>pago</code> - opcional, <code>0</code> para não ou <code>1</code> para sim</li>
+            <li><code>prioridade</code> - opcional, <code>0</code> para não prioridade ou <code>1</code> para prioridade</li>
+            <li><code>id</code> - opcional, usado para atualizar o mesmo participante ao reimportar dados exportados</li>
+            <li><code>guiche</code> - opcional, definido automaticamente pelas faixas quando ausente</li>
+            <li>Campos de consulta aceitos no CSV exportado: <code>situacao</code>, <code>responsavel</code>, horários e <code>revisao</code>; eles são ignorados na importação.</li>
+          </ul>
+          <label class="field">Arquivo CSV ou JSON<input id="participants-file" type="file" accept=".csv,.json,text/csv,application/json" required></label>
+          <button class="button small" type="submit">Importar participantes</button>
+        </form>
+        <p id="participants-import-status" class="muted" role="status"></p>
+      </section>
+      <section class="card dashboard-tool" aria-labelledby="google-sheets-title">
+        <h2 id="google-sheets-title">Backup no Google Sheets</h2>
+        <p>Crie uma planilha na conta que deve receber os dados. Ela continuará sendo uma cópia de segurança; o banco local é a fonte principal.</p>
+        <ol class="setup-steps">
+          <li>Na planilha, abra <strong>Extensões → Apps Script</strong>.</li>
+          <li>Apague o conteúdo inicial e copie o Apps Script abaixo.</li>
+          <li>Em <strong>Configurações do projeto → Propriedades do script</strong>, crie <code>CHECKIN_SHEETS_SECRET</code> com uma chave longa e aleatória.</li>
+          <li>Use <strong>Implantar → Nova implantação → Aplicativo da Web</strong>; execute como você e permita acesso para qualquer pessoa.</li>
+          <li>Copie a URL da implantação e configure, no servidor, <code>CHECKIN_SHEETS_URL</code> e a mesma <code>CHECKIN_SHEETS_SECRET</code>. Reinicie o sistema.</li>
+        </ol>
+        <div class="dashboard-tool-actions">
+          <button id="copy-google-sheets-script" class="button secondary small" type="button">Copiar Apps Script</button>
+        </div>
+        <p id="google-sheets-status" class="muted" role="status"></p>
+      </section>
+      <section class="card dashboard-tool" aria-labelledby="guiches-tools-title">
+        <h2 id="guiches-tools-title">Configuração dos guichês</h2>
+        <p>Distribua todas as letras de A a Z, sem sobreposição. A mudança vale para novas importações; reimporte a lista para atualizar guichês de quem ainda não iniciou a busca.</p>
+        <div id="range-rows" class="range-rows"></div>
+        <div class="dashboard-tool-actions">
+          <button class="button secondary small" id="add-range" type="button">Adicionar faixa</button>
+          <button class="button small" id="save-ranges" type="button">Salvar guichês</button>
+        </div>
+        <p id="ranges-status" class="muted" role="status"></p>
+      </section>
+    </div>
   </main>
 </body>
 </html>

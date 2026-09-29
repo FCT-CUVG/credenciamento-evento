@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Retirada de crachás e kits | BRACIS 2026</title>
+  <title>Retirada de crachás e kits | {{EVENT_NAME}}</title>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/theme.css">
   <script defer src="/app.js"></script>
 </head>
 <body data-page="attendant">
   <header class="site-header">
-    <a class="site-brand" href="/fila" aria-label="BRACIS 2026 — retirada de crachás e kits">
-      <img src="/assets/bracis-2026-logo.png" alt="BRACIS 2026">
+    <a class="site-brand" href="/fila" aria-label="{{EVENT_NAME}} — retirada de crachás e kits">
+      <img src="{{EVENT_LOGO}}" alt="{{EVENT_NAME}}">
       <span class="site-brand-label">Credenciamento</span>
     </a>
     <nav class="header-right" aria-label="Área da equipe">
@@ -20,11 +21,11 @@
     </nav>
   </header>
   <main>
-    <div class="page-heading">
+    <div class="page-heading attendant-heading">
       <div>
-        <p class="page-context">Atendimento final · BRACIS 2026</p>
         <h1 class="page-title" id="guiche-title">GUICHÊ</h1>
-        <p>Confirme a retirada somente depois de entregar o crachá e o kit ao participante.</p>
+        <p class="guiche-range" id="guiche-range"></p>
+        <p class="attendant-instruction">Confirme a retirada somente depois de entregar o crachá e o kit ao participante.</p>
       </div>
     </div>
     <div class="toolbar">
@@ -32,10 +33,9 @@
       <span class="muted" id="last-update"></span>
     </div>
     <p id="page-error" class="alert hidden" role="alert"></p>
-    <div class="lane-grid">
+    <div class="attendant-grid">
       <section class="lane ready-lane"><h2>PRONTOS PARA RETIRADA <span id="count-ready"></span></h2><div class="queue-list" id="lane-ready"></div></section>
-      <section class="lane searching-lane"><h2>EM BUSCA <span id="count-searching"></span></h2><div class="queue-list" id="lane-searching"></div></section>
-      <section class="lane"><h2>AGUARDANDO BUSCA <span id="count-prechecked"></span></h2><div class="queue-list" id="lane-prechecked"></div></section>
+      <section class="lane completed-lane"><h2>JÁ LIBERADOS <span id="count-completed"></span></h2><div class="queue-list" id="lane-completed"></div></section>
     </div>
   </main>
   <dialog id="confirm-dialog">
