@@ -3,6 +3,8 @@ import io
 import csv
 import tempfile
 import unittest
+import sqlite3
+from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
 from email.message import Message
 from email.parser import Parser
@@ -22,11 +24,17 @@ class FlowTest(unittest.TestCase):
         app.SHEET_URL = ""
         app.SHEET_SECRET = ""
         app.RATE.clear()
+        self.original_ranges = app.RANGES
+        app.RANGES = Path(self.temp.name) / "guiches.json"
+        app.RANGES.write_text(json.dumps({"ranges": [
+            {"from": "A", "to": "D", "guiche": "1"}, {"from": "E", "to": "H", "guiche": "2"},
+            {"from": "I", "to": "M", "guiche": "3"}, {"from": "N", "to": "R", "guiche": "4"},
+            {"from": "S", "to": "Z", "guiche": "5"}]}), encoding="utf-8")
         app.init_db()
         input_file = Path(self.temp.name) / "people.json"
         input_file.write_text(json.dumps([
             {"nome": "Ána Silva", "nome_cracha": "Ana", "afiliacao": "Instituto A",
-             "email": "ana@example.org", "cpf": "12345678901", "pago": 1, "prioridade": 1},
+             "email": "ana@example.org", "cpf": "12345678901", "pago": 1, "prioridade": 0},
             {"nome": "Bruno Lima", "nome_cracha": "Bruno", "afiliacao": "Instituto B",
              "email": "bruno@example.org", "cpf": "987.654.321-00", "pago": 1},
         ]), encoding="utf-8")
@@ -38,6 +46,7 @@ class FlowTest(unittest.TestCase):
                 db.execute("INSERT INTO users VALUES (?,?,?,?,?)",
                            (username, salt, app.password_hash("strong-password", salt), role, guiche))
     def tearDown(self):
+        app.RANGES = self.original_ranges
         self.temp.cleanup()
 
     def request(self, path, data=None, cookie="", csrf="", json_response=True):
@@ -77,12 +86,29 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(code, 200)
         return cookie, me["csrf"]
 
+    def test_connect_closes_after_commit_and_rollback(self):
+        with app.connect() as db:
+            db.execute("INSERT INTO users VALUES (?,?,?,?,?)", ("temporary", "salt", "hash", "volunteer", ""))
+        with self.assertRaises(sqlite3.ProgrammingError):
+            db.execute("SELECT 1")
+        try:
+            with app.connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                db.execute("INSERT INTO users VALUES (?,?,?,?,?)", ("rolled-back", "salt", "hash", "volunteer", ""))
+                raise RuntimeError("rollback")
+        except RuntimeError:
+            pass
+        with self.assertRaises(sqlite3.ProgrammingError):
+            db.execute("SELECT 1")
+        with app.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM users WHERE username='rolled-back'").fetchone()[0], 0)
+
     def test_complete_flow_and_atomic_claim(self):
         code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
         self.assertEqual(code, 200)
         self.assertNotIn("cpf", found)
         code, done, _ = self.request("/api/precheck", {"token": found["token"]})
-        self.assertEqual((code, done["status"]), (200, "prechecked"))
+        self.assertEqual((code, done), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": False, "guiche": "1", "guiche_ranges": [{"from": "A", "to": "D"}], "guiche_priority": False}))
         users = [self.login("vol1"), self.login("vol2")]
         with app.connect() as db:
             pid = db.execute("SELECT id FROM participants WHERE name_key='ana silva'").fetchone()[0]
@@ -118,16 +144,41 @@ class FlowTest(unittest.TestCase):
         with app.connect() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM events WHERE participant_id=?", (pid,)).fetchone()[0], 5)
 
-    def test_import_requires_new_fields_and_valid_cpf(self):
+    def test_import_allows_missing_badge_affiliation_and_cpf(self):
         required = {"nome": "Carla Souza", "nome_cracha": "Carla", "afiliacao": "Instituto C",
                     "email": "carla@example.org", "cpf": "12345678901"}
         missing_badge = dict(required)
         del missing_badge["nome_cracha"]
-        with self.assertRaisesRegex(ValueError, "nome_cracha"):
-            app.import_text(json.dumps([missing_badge]), ".json")
+        del missing_badge["afiliacao"]
+        missing_badge["nome"] = "Carla Maria Souza"
+        missing_badge["cpf"] = ""
+        app.import_text(json.dumps([missing_badge]), ".json")
+        with app.connect() as db:
+            row = db.execute("SELECT badge_name, affiliation, cpf FROM participants WHERE email='carla@example.org'").fetchone()
+        self.assertEqual(tuple(row), ("Carla Souza", "", ""))
         invalid_cpf = dict(required, cpf="123")
         with self.assertRaisesRegex(ValueError, "cpf deve ter 11"):
             app.import_text(json.dumps([invalid_cpf]), ".json")
+        app.import_text(json.dumps([{"nome": "Madonna", "email": "madonna@example.org"}]), ".json")
+        with app.connect() as db:
+            row = db.execute("SELECT badge_name FROM participants WHERE email='madonna@example.org'").fetchone()
+        self.assertEqual(row[0], "Madonna")
+
+    def test_import_csv_accepts_spreadsheet_delimiters_and_skips_empty_rows(self):
+        for delimiter in (",", ";", "\t"):
+            with self.subTest(delimiter=delimiter):
+                content = delimiter.join(("nome", "afiliacao", "pago", "nome_cracha", "email", "cpf")) + "\n"
+                content += delimiter.join(("Carla Souza", "Instituto C", "1", "Carla", "carla@example.org", "")) + "\n"
+                content += delimiter * 5 + "\n"
+                self.assertEqual(app.import_text(content, ".csv"), (1, 1 if delimiter == "," else 0))
+        with self.assertRaisesRegex(ValueError, "não contém participantes"):
+            app.import_text("nome,afiliacao,pago,nome_cracha,email,cpf\n,,,,,\n", ".csv")
+        with self.assertRaisesRegex(ValueError, "Cabeçalho CSV inválido"):
+            app.import_text("nome;afiliacao;pago;cpf\nCarla;Instituto C;1;\n", ".csv")
+        app.import_text("nome;email\nJoana da Silva;joana@example.org\n", ".csv")
+        with app.connect() as db:
+            row = db.execute("SELECT badge_name, affiliation FROM participants WHERE email='joana@example.org'").fetchone()
+        self.assertEqual(tuple(row), ("Joana Silva", ""))
 
     def test_unpaid_participant_is_directed_to_attendance(self):
         admin = self.login("admin")
@@ -135,24 +186,84 @@ class FlowTest(unittest.TestCase):
             pid = db.execute("SELECT id FROM participants WHERE name_key='ana silva'").fetchone()[0]
         code, updated, _ = self.request("/api/participants/payment", {"id": pid, "paid": 0}, *admin)
         self.assertEqual((code, updated["item"]["paid"]), (200, False))
-        code, result, _ = self.request("/api/lookup", {"cpf": "12345678901"})
-        self.assertEqual(code, 403)
-        self.assertIn("Procure atendimento", result["error"])
+        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
+        self.assertEqual(code, 200)
+        self.assertEqual(set(found), {"name", "affiliation", "token"})
+        code, done, _ = self.request("/api/precheck", {"token": found["token"]})
+        self.assertEqual((code, done), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": True}))
+        self.assertEqual(self.request("/api/dashboard", cookie=admin[0])[1]["guidance_pending"], 1)
+        self.assertEqual(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"], [])
         code, updated, _ = self.request("/api/participants/payment", {"id": pid, "paid": 1}, *admin)
         self.assertEqual((code, updated["item"]["paid"]), (200, True))
-        self.assertEqual(self.request("/api/lookup", {"cpf": "12345678901"})[0], 200)
+        self.assertEqual(self.request("/api/dashboard", cookie=admin[0])[1]["guidance_pending"], 0)
+        self.assertEqual(len(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"]), 1)
 
-    def test_public_lookup_requires_cpf(self):
+    def test_missing_affiliation_records_arrival_and_lists_pending_guidance(self):
+        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
+        self.assertEqual(code, 200)
+        previous_token = found["token"]
+        app.import_text(json.dumps([{"nome": "Ána Silva", "nome_cracha": "Ana",
+                                     "email": "ana@example.org", "cpf": "12345678901",
+                                     "pago": 1, "prioridade": 0}]), ".json")
+        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
+        self.assertEqual(code, 200)
+        self.assertEqual(set(found), {"name", "affiliation", "token"})
+        self.assertEqual(found["affiliation"], "")
+        self.assertIn("token", found)
+        code, result, _ = self.request("/api/precheck", {"token": previous_token})
+        self.assertEqual((code, result["needs_guidance"]), (200, True))
+        with app.connect() as db:
+            row = db.execute("SELECT status, prechecked_at FROM participants WHERE email='ana@example.org'").fetchone()
+            event = db.execute("SELECT action FROM events WHERE action='precheck_pending' AND participant_id=(SELECT id FROM participants WHERE email='ana@example.org')").fetchone()
+        self.assertEqual(row["status"], "prechecked")
+        self.assertTrue(row["prechecked_at"])
+        self.assertEqual(event["action"], "precheck_pending")
+        self.assertEqual(self.request("/pendencias", json_response=False)[0], 404)
+        admin = self.login("admin")
+        with app.connect() as db:
+            pid = db.execute("SELECT id FROM participants WHERE email='ana@example.org'").fetchone()[0]
+        self.assertEqual(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"], [])
+        self.assertEqual(self.request("/api/dashboard/summary")[1]["arrived"], 1)
+        self.assertEqual(self.request("/api/dashboard", cookie=admin[0])[1]["guidance_pending"], 1)
+        code, _, _ = self.request("/api/participants/status", {"id": pid, "status": "completed"}, *admin)
+        self.assertEqual(code, 409)
+        self.assertEqual(self.request("/api/participants/affiliation", {"id": pid, "affiliation": "X"},
+                                      *self.login("vol1"))[0], 403)
+        self.assertEqual(self.request("/api/participants/affiliation", {"id": pid, "affiliation": "  "}, *admin)[0], 400)
+        code, updated, _ = self.request("/api/participants/affiliation",
+                                        {"id": pid, "affiliation": "  Instituto   A "}, *admin)
+        self.assertEqual((code, updated["item"]["affiliation"]), (200, "Instituto A"))
+        with app.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM events WHERE action='affiliation_update' AND actor='admin'").fetchone()[0], 1)
+        self.assertEqual(self.request("/api/dashboard", cookie=admin[0])[1]["guidance_pending"], 0)
+        self.assertEqual(len(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"]), 1)
+        # Resolvida a pendência, o responsável credencia direto pelo painel detalhado.
+        code, updated, _ = self.request("/api/participants/status", {"id": pid, "status": "completed"}, *admin)
+        self.assertEqual((code, updated["item"]["status"]), (200, "completed"))
+
+    def test_public_lookup_accepts_cpf_or_name_and_email(self):
         code, found, _ = self.request("/api/lookup", {"cpf": "123.456.789-01"})
-        self.assertEqual((code, found["name"]), (200, "Ána Silva"))
+        self.assertEqual((code, found["name"], found["affiliation"]), (200, "Á*a S***a", "I*******o A"))
+        self.assertEqual(set(found), {"name", "affiliation", "token"})
+        self.assertRegex(found["token"], r"^[A-Za-z0-9_-]{43}$")
+        code, found, _ = self.request("/api/lookup", {"name": "Ána Silva", "email": "ana@example.org"})
+        self.assertEqual((code, found["name"]), (200, "Á*a S***a"))
+        code, done, _ = self.request("/api/precheck", {"token": found["token"]})
+        self.assertEqual((code, done), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": False, "guiche": "1", "guiche_ranges": [{"from": "A", "to": "D"}], "guiche_priority": False}))
+        self.assertEqual(self.request("/api/precheck", {"token": found["token"]})[0], 400)
+        code, repeated, _ = self.request("/api/lookup", {"name": "Ána Silva", "email": "ana@example.org"})
+        self.assertEqual((code, set(repeated)), (200, {"name", "affiliation", "token"}))
+        self.assertEqual(self.request("/api/precheck", {"token": repeated["token"]})[0], 200)
         code, _, _ = self.request("/api/lookup", {"cpf": "123"})
+        self.assertEqual(code, 400)
+        code, _, _ = self.request("/api/lookup", {"name": "Ána Silva", "email": ""})
         self.assertEqual(code, 400)
         code, _, _ = self.request("/api/lookup", {"cpf": "00000000000"})
         self.assertEqual(code, 404)
         code, _, _ = self.request("/api/dashboard")
         self.assertEqual(code, 401)
         code, summary, _ = self.request("/api/dashboard/summary")
-        self.assertEqual((code, summary), (200, {"total": 2, "arrived": 0, "completed": 0}))
+        self.assertEqual((code, summary), (200, {"total": 2, "arrived": 1, "completed": 0}))
 
     def test_attendant_can_view_other_desks_but_only_complete_own(self):
         input_file = Path(self.temp.name) / "extra-desk.json"
@@ -164,7 +275,7 @@ class FlowTest(unittest.TestCase):
         attendant = self.login("att1")
         code, desks, _ = self.request("/api/guiches", cookie=attendant[0])
         self.assertEqual(code, 200)
-        self.assertIn({"id": "7", "ranges": []}, desks["guiches"])
+        self.assertIn({"id": "7", "ranges": [], "priority": False}, desks["guiches"])
         code, found, _ = self.request("/api/lookup", {"cpf": "98765432100"})
         self.assertEqual(code, 200)
         self.request("/api/precheck", {"token": found["token"]})
@@ -245,11 +356,28 @@ class FlowTest(unittest.TestCase):
         input_file = Path(self.temp.name) / "updated.json"
         input_file.write_text(json.dumps([{"nome": "Ána Silva", "nome_cracha": "Ana", "afiliacao": "Instituto A",
                             "email": "ana@example.org", "cpf": "12345678901", "pago": 1,
-                            "prioridade": 1, "guiche": "7"}]))
+                            "prioridade": 0, "guiche": "7"}]))
         app.import_file(input_file)
         with app.connect() as db:
             row = db.execute("SELECT status,guiche FROM participants WHERE name_key='ana silva'").fetchone()
         self.assertEqual(tuple(row), ("prechecked", "7"))
+
+    def test_reimport_by_id_updates_lookup_keys(self):
+        original = {"nome": "Carla Souza", "nome_cracha": "Carla", "afiliacao": "Instituto C",
+                    "email": "carla@example.org", "pago": 1, "guiche": "1"}
+        self.assertEqual(app.import_text(json.dumps([original]), ".json"), (1, 1))
+        with app.connect() as db:
+            pid = db.execute("SELECT id FROM participants WHERE name_key=? AND email_key=?",
+                             (app.normalize(original["nome"]), original["email"].casefold())).fetchone()[0]
+
+        updated = dict(original, id=pid, nome="Cárla Oliveira", email="Carla.Nova@Example.org")
+        self.assertEqual(app.import_text(json.dumps([updated]), ".json"), (1, 1))
+        with app.connect() as db:
+            rows = db.execute("SELECT id, name, email FROM participants WHERE name_key=? AND email_key=?",
+                              (app.normalize(updated["nome"]), updated["email"].casefold())).fetchall()
+        self.assertEqual([tuple(row) for row in rows], [(pid, updated["nome"], updated["email"])])
+        code, found, _ = self.request("/api/lookup", {"name": "Carla Oliveira", "email": "carla.nova@example.org"})
+        self.assertEqual((code, found["name"]), (200, "C***a O******a"))
 
     def test_event_yaml_changes_theme_and_public_brand(self):
         config_file = Path(self.temp.name) / "evento.yaml"
@@ -272,7 +400,7 @@ class FlowTest(unittest.TestCase):
             self.assertEqual(code, 200)
             self.assertIn(b"Encontro Exemplo", page)
             self.assertIn(b"ARRIVED AT Encontro?", page)
-            self.assertNotIn(b"ECOS", page)
+            self.assertNotIn(b"nome completo", page)
             self.assertNotIn(b"{{EVENT_NAME}}", page)
             for route in ("/busca", "/fila", "/painel"):
                 code, team_page, _ = self.request(route, json_response=False)
@@ -328,7 +456,7 @@ class FlowTest(unittest.TestCase):
         import sqlite3
         target = Path(self.temp.name) / "copy.sqlite3"
         app.backup_file(target)
-        with sqlite3.connect(target) as db:
+        with closing(sqlite3.connect(target)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM participants").fetchone()[0], 2)
         with self.assertRaises(ValueError):
             app.backup_file(target)
@@ -424,6 +552,130 @@ class FlowTest(unittest.TestCase):
             self.assertEqual((code, updated["ranges"]), (200, valid))
             self.assertEqual(app.guiche_for("Daniel"), "2")
             self.assertEqual(app.guiche_for("Ana"), "1")
+
+    def test_priority_participants_use_priority_desk_and_lead_separation(self):
+        admin = self.login("admin")
+        app.import_text(json.dumps([
+            {"nome": "Zeca Prioritário", "email": "zeca@example.org", "cpf": "11111111111",
+             "afiliacao": "Instituto Z", "pago": 1, "prioridade": 1},
+            {"nome": "Paula Explícita", "email": "paula@example.org", "afiliacao": "Instituto P",
+             "pago": 1, "prioridade": 1, "guiche": "3"}]), ".json")
+        with app.connect() as db:
+            desks = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+        self.assertEqual((desks["zeca@example.org"], desks["paula@example.org"], desks["ana@example.org"]), ("P", "P", "1"))
+        self.assertIn({"id": "P", "ranges": [], "priority": True},
+                      self.request("/api/guiches", cookie=admin[0])[1]["guiches"])
+        for cpf in ("12345678901", "11111111111"):
+            token = self.request("/api/lookup", {"cpf": cpf})[1]["token"]
+            code, done, _ = self.request("/api/precheck", {"token": token})
+        self.assertEqual((code, done["guiche"], done["guiche_ranges"], done["guiche_priority"]), (200, "P", [], True))
+        queue = self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"]
+        self.assertEqual([(item["name"], item["priority"]) for item in queue],
+                         [("Zeca Prioritário", True), ("Ána Silva", False)])
+        dashboard = self.request("/api/dashboard", cookie=admin[0])[1]
+        desks = {d["id"]: (d["total"], d["priority"]) for d in dashboard["desks"]}
+        self.assertEqual((desks["1"], desks["P"], dashboard["registration_pending"]), ((2, False), (2, True), 0))
+        app.import_text(json.dumps([{"nome": "Beto Sem Afiliação", "email": "beto@example.org", "pago": 1}]), ".json")
+        dashboard = self.request("/api/dashboard", cookie=admin[0])[1]
+        self.assertEqual((next(d["total"] for d in dashboard["desks"] if d["id"] == "1"), dashboard["registration_pending"]), (3, 1))
+        config = self.request("/api/guiches/config", cookie=admin[0])[1]
+        self.assertEqual(config["priority_guiche"], "P")
+        self.assertEqual(self.request("/api/guiches/config", {"ranges": config["ranges"], "priority_guiche": "P P"}, *admin)[0], 400)
+        code, updated, _ = self.request("/api/guiches/config", {"ranges": config["ranges"], "priority_guiche": ""}, *admin)
+        self.assertEqual((code, updated["priority_guiche"]), (200, ""))
+        app.import_text(json.dumps([{"nome": "Yara Prioritária", "email": "yara@example.org", "pago": 1,
+                                     "afiliacao": "Instituto Y", "prioridade": 1}]), ".json")
+        with app.connect() as db:
+            self.assertEqual(db.execute("SELECT guiche FROM participants WHERE email='yara@example.org'").fetchone()[0], "5")
+        code, updated, _ = self.request("/api/guiches/config", {"ranges": config["ranges"]}, *admin)
+        self.assertEqual(updated["priority_guiche"], "")
+
+    def test_admin_toggles_priority_and_desk_follows(self):
+        admin = self.login("admin")
+        with app.connect() as db:
+            pid = db.execute("SELECT id FROM participants WHERE email='bruno@example.org'").fetchone()[0]
+        self.assertEqual(self.request("/api/participants/priority", {"id": pid, "priority": 1}, *self.login("vol1"))[0], 403)
+        self.assertEqual(self.request("/api/participants/priority", {"id": pid, "priority": 2}, *admin)[0], 400)
+        code, updated, _ = self.request("/api/participants/priority", {"id": pid, "priority": 1}, *admin)
+        self.assertEqual((code, updated["item"]["priority"], updated["item"]["guiche"]), (200, True, "P"))
+        code, updated, _ = self.request("/api/participants/priority", {"id": pid, "priority": 0}, *admin)
+        self.assertEqual((code, updated["item"]["priority"], updated["item"]["guiche"]), (200, False, "1"))
+        with app.connect() as db:
+            actions = [r[0] for r in db.execute("SELECT action FROM events WHERE participant_id=? AND action LIKE 'priority_%' ORDER BY rowid", (pid,))]
+        self.assertEqual(actions, ["priority_on", "priority_off"])
+        token = self.request("/api/lookup", {"cpf": "98765432100"})[1]["token"]
+        self.request("/api/precheck", {"token": token})
+        self.assertEqual(self.request("/api/action/claim", {"id": pid}, *self.login("vol1"))[0], 200)
+        queue = self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"]
+        self.assertEqual(queue[0]["cpf_prefix"], "987")
+        self.assertNotIn("cpf", queue[0])
+        self.assertEqual(self.request("/api/participants/priority", {"id": pid, "priority": 1}, *admin)[0], 409)
+
+    def test_saving_desks_updates_participants_and_attendants(self):
+        admin = self.login("admin")
+        app.import_text(json.dumps([
+            {"nome": "Carla Manual", "email": "carla@example.org", "afiliacao": "C", "pago": 1, "guiche": "7"},
+            {"nome": "Diego Rocha", "email": "diego@example.org", "afiliacao": "D", "pago": 1},
+            {"nome": "Zé Prioridade", "email": "ze@example.org", "afiliacao": "Z", "pago": 1, "prioridade": 1}]), ".json")
+        token = self.request("/api/lookup", {"cpf": "12345678901"})[1]["token"]
+        self.request("/api/precheck", {"token": token})
+        with app.connect() as db:
+            ana = db.execute("SELECT id FROM participants WHERE email='ana@example.org'").fetchone()[0]
+        self.assertEqual(self.request("/api/action/claim", {"id": ana}, *self.login("vol1"))[0], 200)
+
+        def desks():
+            with app.connect() as db:
+                people = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+                people["att1"] = db.execute("SELECT guiche FROM users WHERE username='att1'").fetchone()[0]
+            return people
+
+        ranges = self.request("/api/guiches/config", cookie=admin[0])[1]["ranges"]
+        renamed = [dict(r, guiche="1A") if r["guiche"] == "1" else r for r in ranges]
+        code, result, _ = self.request("/api/guiches/config", {"ranges": renamed, "priority_guiche": "P"}, *admin)
+        self.assertEqual((code, result["updated"]), (200, 3))
+        after = desks()
+        self.assertEqual((after["ana@example.org"], after["bruno@example.org"], after["diego@example.org"],
+                          after["carla@example.org"], after["ze@example.org"], after["att1"]),
+                         ("1A", "1A", "1A", "7", "P", "1A"))
+        moved = [dict(r) for r in renamed]
+        moved[0]["to"], moved[1]["from"] = "C", "D"
+        self.assertEqual(self.request("/api/guiches/config", {"ranges": moved, "priority_guiche": "PRI"}, *admin)[1]["updated"], 2)
+        after = desks()
+        self.assertEqual((after["ana@example.org"], after["diego@example.org"], after["carla@example.org"], after["ze@example.org"]),
+                         ("1A", "2", "7", "PRI"))
+        self.request("/api/guiches/config", {"ranges": moved, "priority_guiche": ""}, *admin)
+        self.assertEqual(desks()["ze@example.org"], "5")
+        with app.connect() as db:
+            actions = {r[0] for r in db.execute("SELECT action FROM events WHERE actor='admin'")}
+        self.assertTrue({"guiche_rename", "guiche_reassign"} <= actions)
+        with app.connect() as db:
+            db.execute("UPDATE participants SET guiche='2', guiche_manual=1 WHERE email='ze@example.org'")
+            db.execute("UPDATE participants SET priority=1 WHERE email='ze@example.org'")
+        self.request("/api/guiches/config", {"ranges": moved, "priority_guiche": "P"}, *admin)
+        self.assertEqual(desks()["ze@example.org"], "P")
+        exported = app.participants_download().decode("utf-8-sig")
+        app.import_text(exported, ".csv")
+        with app.connect() as db:
+            manual = dict(db.execute("SELECT email, guiche_manual FROM participants").fetchall())
+        self.assertEqual((manual["carla@example.org"], manual["diego@example.org"], manual["ana@example.org"]), (1, 0, 0))
+
+    def test_stale_priority_desk_merges_into_current_priority_desk(self):
+        app.import_text(json.dumps([
+            {"nome": "Zeca Prioridade", "email": "zeca@example.org", "afiliacao": "Z", "pago": 1, "prioridade": 1},
+            {"nome": "Yara Prioridade", "email": "yara@example.org", "afiliacao": "Y", "pago": 1, "prioridade": 1},
+            {"nome": "Carla Manual", "email": "carla@example.org", "afiliacao": "C", "pago": 1, "guiche": "7"}]), ".json")
+        with app.connect() as db:
+            # Situação deixada por uma renomeação antiga: prioritários em "Prioridade", configuração em "P".
+            db.execute("UPDATE participants SET guiche='Prioridade', guiche_manual=1 WHERE priority=1")
+            db.execute("UPDATE participants SET status='completed' WHERE email='yara@example.org'")
+            db.execute("UPDATE users SET guiche='Prioridade' WHERE username='att1'")
+        app.init_db()
+        with app.connect() as db:
+            desks = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+            attendant = db.execute("SELECT guiche FROM users WHERE username='att1'").fetchone()[0]
+        self.assertEqual((desks["zeca@example.org"], desks["yara@example.org"], desks["carla@example.org"], attendant),
+                         ("P", "P", "7", "P"))
+        self.assertNotIn("Prioridade", [d["id"] for d in self.request("/api/guiches", cookie=self.login("admin")[0])[1]["guiches"]])
 
 
 if __name__ == "__main__":

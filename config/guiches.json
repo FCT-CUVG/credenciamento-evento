@@ -1,10 +1,30 @@
 {
-  "note": "Faixas de exemplo. Ajuste de acordo com a distribuição real antes de importar a lista final.",
   "ranges": [
-    {"from": "A", "to": "D", "guiche": "1"},
-    {"from": "E", "to": "H", "guiche": "2"},
-    {"from": "I", "to": "M", "guiche": "3"},
-    {"from": "N", "to": "R", "guiche": "4"},
-    {"from": "S", "to": "Z", "guiche": "5"}
-  ]
+    {
+      "from": "A",
+      "to": "D",
+      "guiche": "1"
+    },
+    {
+      "from": "E",
+      "to": "H",
+      "guiche": "2"
+    },
+    {
+      "from": "I",
+      "to": "M",
+      "guiche": "3"
+    },
+    {
+      "from": "N",
+      "to": "R",
+      "guiche": "4"
+    },
+    {
+      "from": "S",
+      "to": "Z",
+      "guiche": "5"
+    }
+  ],
+  "priority_guiche": "Prioridade"
 }

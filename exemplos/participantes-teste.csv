@@ -1,0 +1,13 @@
+nome,nome_cracha,afiliacao,email,cpf,pago,prioridade
+Alice Ferreira,Alice,Universidade de São Paulo,alice@example.org,11111111111,1,0
+Bernardo Costa,Bernardo Costa,Unicamp,bernardo@example.org,22222222222,0,0
+Camila Rocha,Camila,,camila@example.org,33333333333,1,0
+Diego Martins,Diego,,diego@example.org,44444444444,0,1
+Eduarda Nogueira,Duda,UFMG,eduarda@example.org,555.555.555-55,1,1
+Fábio Araújo,,UFRJ,fabio@example.org,66666666666,1,0
+Gabriela Santos,Gabi,PUC-Rio,gabriela@example.org,,1,1
+Igor Almeida,Igor Almeida,,igor@example.org,,0,1
+João Pedro Lima,João Pedro,UFRGS,joao@example.org,77777777777,1,0
+Natália Souza,Natália,UFPE,natalia@example.org,88888888888,0,0
+Rafael Oliveira,Rafael,UnB,rafael@example.org,99999999999,1,0
+Sofia Mendes,Sofia,,sofia@example.org,12312312312,1,0

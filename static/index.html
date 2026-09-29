@@ -30,6 +30,15 @@
             <label class="field"><span data-i18n="cpfLabel">CPF</span>
               <input name="cpf" inputmode="numeric" autocomplete="off" required maxlength="14" placeholder="000.000.000-00" data-i18n-placeholder="cpfPlaceholder">
             </label>
+            <button class="button secondary small lookup-alternative" id="lookup-alternative" type="button">or use your full name and e-mail</button>
+            <div class="lookup-alternative-fields hidden" id="lookup-alternative-fields">
+              <label class="field"><span id="lookup-name-label">Full name</span>
+                <input name="name" autocomplete="name">
+              </label>
+              <label class="field"><span id="lookup-email-label">E-mail</span>
+                <input name="email" type="email" autocomplete="email">
+              </label>
+            </div>
             <button class="button full" type="submit" data-i18n="searchButton">Find registration</button>
           </form>
           <p id="lookup-error" class="alert hidden" role="alert"></p>
@@ -38,7 +47,7 @@
           <p class="event-meta" data-i18n="foundEyebrow">REGISTRATION FOUND</p>
           <h2 id="found-name" class="person-name"></h2>
           <p id="found-affiliation" class="big muted"></p>
-          <p data-i18n="confirmIntro">Check your details. Confirm your arrival so the team can prepare your badge and kit.</p>
+          <p id="confirm-intro" data-i18n="confirmIntro">Check your details. Confirm your arrival so the team can prepare your badge and kit.</p>
           <button class="button full" id="precheck-button" data-i18n="confirmButton">Confirm my arrival</button>
           <button class="button secondary full" id="retry-button" data-i18n="retryButton">Change search</button>
           <p id="confirm-error" class="alert hidden" role="alert"></p>
@@ -47,8 +56,20 @@
           <p class="event-meta" data-i18n="doneEyebrow">PRE-CHECK-IN COMPLETE</p>
           <h2 id="done-title" data-i18n="doneTitle">ARRIVAL CONFIRMED</h2>
           <p class="person-name big" id="done-name"></p>
-          <p data-i18n="doneIntro">Visit the check-in desk to collect your badge and kit. Ask a volunteer if you need directions.</p>
+          <div class="desk-callout" id="done-desk">
+            <span class="desk-callout-label" data-i18n="deskLabel">Go to desk</span>
+            <strong class="desk-callout-number" id="done-desk-number"></strong>
+            <span class="desk-callout-range" id="done-desk-range"></span>
+          </div>
+          <p data-i18n="doneIntro">Collect your badge and kit at this desk. Ask a volunteer if you need directions.</p>
           <button class="button secondary full" id="done-retry" data-i18n="doneRetry">Find another registration</button>
+        </section>
+        <section class="stack hidden" id="public-pending" aria-labelledby="pending-title">
+          <p class="event-meta" data-i18n="pendingEyebrow">ARRIVAL RECORDED</p>
+          <h2 id="pending-title" data-i18n="pendingTitle">PLEASE FIND A VOLUNTEER</h2>
+          <p class="person-name big" id="pending-name"></p>
+          <p class="alert" data-i18n="pendingIntro">Your arrival has been recorded. Please find a volunteer for guidance before collecting your badge and kit.</p>
+          <button class="button secondary full" id="pending-retry" data-i18n="doneRetry">Find another registration</button>
         </section>
       </div>
     </div>

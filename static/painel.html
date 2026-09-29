@@ -26,6 +26,17 @@
         <h1 class="page-title">PAINEL DO CREDENCIAMENTO</h1>
         <p>Acompanhe quem chegou, onde está cada crachá e kit, e os participantes credenciados.</p>
       </div>
+      <aside class="status-legend" aria-labelledby="status-legend-title">
+        <p class="status-legend-title" id="status-legend-title">Legenda da situação</p>
+        <ol class="status-legend-flow">
+          <li><span class="status-legend-squares"><span class="step status-registered" aria-hidden="true">IN</span></span><span class="status-legend-name">Inscrito</span></li>
+          <li><span class="status-legend-squares"><span class="step status-prechecked" aria-hidden="true">AB</span><span class="status-legend-or">ou</span><span class="step status-guidance" aria-hidden="true">OP</span></span><span class="status-legend-name status-prechecked-text">Aguardando busca</span><span class="status-legend-name status-guidance-text">Orientação pendente</span></li>
+          <li><span class="status-legend-squares"><span class="step status-searching" aria-hidden="true">EB</span></span><span class="status-legend-name">Em busca</span></li>
+          <li><span class="status-legend-squares"><span class="step status-ready" aria-hidden="true">PR</span></span><span class="status-legend-name">Pronto no guichê</span></li>
+          <li><span class="status-legend-squares"><span class="step status-completed" aria-hidden="true">CR</span></span><span class="status-legend-name">Credenciado</span></li>
+        </ol>
+        <p class="status-legend-note"><span class="step step-done" aria-hidden="true">IN</span>Verde claro: etapa já concluída. OP aparece no lugar de AB quando a pessoa chegou com pagamento ou afiliação pendente. Clique numa etapa da tabela para mudar a situação.</p>
+      </aside>
     </div>
     <div class="stats">
       <div class="stat"><strong id="stat-total">—</strong><span>Inscritos</span></div>
@@ -34,24 +45,51 @@
       <div class="stat"><strong id="stat-ready">—</strong><span>Prontos no guichê</span></div>
       <div class="stat"><strong id="stat-completed">—</strong><span>Participantes credenciados</span></div>
     </div>
+    <section class="desk-stats" aria-labelledby="desk-stats-title">
+      <h2 id="desk-stats-title">Inscritos por guichê</h2>
+      <ul id="desk-stats-list" class="desk-stats-list"></ul>
+    </section>
     <p id="sync-status" class="muted"></p>
     <div class="dashboard-shortcuts">
+      <a href="#dashboard-filter" id="pending-shortcut">Pendências de orientação (<span id="pending-shortcut-count">—</span>)</a>
       <a href="#participants-tools-title">Importar dados de participantes</a>
       <a href="#google-sheets-title">Configurar backup no Google Sheets</a>
       <a href="#guiches-tools-title">Configurar guichês</a>
     </div>
     <div class="toolbar">
-      <input id="dashboard-filter" class="search-input" type="search" placeholder="Buscar por nome, e-mail ou guichê" aria-label="Filtrar participantes">
-      <div class="dashboard-status-filter">
-        <label for="status-filter">Filtro</label>
-        <select id="status-filter" class="search-input">
-          <option value="">Todos os estados</option>
-          <option value="registered">Ainda não chegaram</option>
-          <option value="prechecked">Pré-check-in</option>
-          <option value="searching">Em busca</option>
-          <option value="ready">Prontos no guichê</option>
-          <option value="completed">Participantes credenciados</option>
-        </select>
+      <input id="dashboard-filter" class="search-input" type="search" placeholder="Buscar por nome, e-mail, CPF, afiliação ou guichê" aria-label="Buscar participantes">
+      <div class="dashboard-filters">
+        <label class="filter">Situação
+          <select id="status-filter" class="filter-select">
+            <option value="">Todas</option>
+            <option value="registered">Inscrito</option>
+            <option value="guidance">Orientação pendente</option>
+            <option value="prechecked">Aguardando busca</option>
+            <option value="searching">Em busca</option>
+            <option value="ready">Pronto no guichê</option>
+            <option value="completed">Credenciado</option>
+          </select>
+        </label>
+        <label class="filter">Prioridade
+          <select id="priority-filter" class="filter-select">
+            <option value="">Todas</option>
+            <option value="1">Sim</option>
+            <option value="0">Não</option>
+          </select>
+        </label>
+        <label class="filter">Pagamento
+          <select id="payment-filter" class="filter-select">
+            <option value="">Todos</option>
+            <option value="1">Pago</option>
+            <option value="0">Não pago</option>
+          </select>
+        </label>
+        <label class="filter">Guichê
+          <select id="desk-filter" class="filter-select">
+            <option value="">Todos</option>
+          </select>
+        </label>
+        <button id="clear-filters" class="button secondary small" type="button">Limpar filtros</button>
       </div>
       <span id="list-count" class="muted"></span>
     </div>
@@ -61,27 +99,48 @@
     </div>
     <p id="page-error" class="alert hidden" role="alert"></p>
     <div class="table-wrap"><table>
-      <thead><tr><th>Participante</th><th>Nome no crachá</th><th>E-mail</th><th>CPF</th><th>Afiliação</th><th>Pagamento</th><th>Prioridade</th><th>Guichê</th><th>Situação</th><th>Responsável</th><th>Última movimentação</th></tr></thead>
+      <thead><tr><th>Participante</th><th>Nome no crachá</th><th>Afiliação</th><th>Pagamento</th><th>Prioridade</th><th>Guichê</th><th>Situação</th><th>Última movimentação</th></tr></thead>
       <tbody id="dashboard-body"></tbody>
     </table></div>
+    <nav class="pagination" aria-label="Paginação da lista de participantes">
+      <div class="pagination-info">
+      <span id="page-range" class="muted"></span>
+      <label class="pagination-size">Por página
+        <select id="page-size" class="filter-select">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+      </div>
+      <div class="pagination-buttons">
+        <button id="page-prev" class="button secondary small" type="button">Anterior</button>
+        <span id="page-label" class="pagination-label"></span>
+        <button id="page-next" class="button secondary small" type="button">Próxima</button>
+      </div>
+    </nav>
     <div class="dashboard-tools">
-      <section class="card dashboard-tool" aria-labelledby="participants-tools-title">
-        <h2 id="participants-tools-title">Participantes</h2>
-        <p>Importe o mesmo CSV produzido em “Exportar dados”. Os dados cadastrais são atualizados sem apagar as etapas já concluídas.</p>
+      <div class="card dashboard-tabs">
+      <div class="tab-list" role="tablist" aria-label="Configurações do credenciamento">
+        <button class="tab" id="participants-tools-title" type="button" role="tab" aria-selected="true" aria-controls="participants-tools">Participantes</button>
+        <button class="tab" id="guiches-tools-title" type="button" role="tab" aria-selected="false" aria-controls="guiches-tools" tabindex="-1">Configuração dos guichês</button>
+      </div>
+      <section class="dashboard-tool" id="participants-tools" role="tabpanel" aria-labelledby="participants-tools-title">
+        <p>Importe um CSV separado por vírgula ou ponto e vírgula, com pelo menos um participante após o cabeçalho. Os dados cadastrais são atualizados sem apagar as etapas já concluídas.</p>
         <div class="dashboard-tool-actions">
           <a class="button secondary small" href="/api/participants/template" download="participantes-exemplo.csv">Baixar CSV de exemplo</a>
         </div>
         <form id="participants-import-form" class="import-form">
           <ul class="import-fields muted">
             <li><code>nome</code> - obrigatório, texto</li>
-            <li><code>nome_cracha</code> - obrigatório, texto</li>
-            <li><code>afiliacao</code> - obrigatório, texto</li>
+            <li><code>nome_cracha</code> - opcional; se vazio, usa o primeiro e o último nome</li>
+            <li><code>afiliacao</code> - opcional; se vazia, a chegada é registrada e o participante recebe orientação antes da busca do kit</li>
             <li><code>email</code> - obrigatório, texto</li>
-            <li><code>cpf</code> - obrigatório, 11 dígitos ou <code>xxx.xxx.xxx-xx</code></li>
+            <li><code>cpf</code> - opcional, 11 dígitos ou <code>xxx.xxx.xxx-xx</code> quando preenchido</li>
             <li><code>pago</code> - opcional, <code>0</code> para não ou <code>1</code> para sim</li>
-            <li><code>prioridade</code> - opcional, <code>0</code> para não prioridade ou <code>1</code> para prioridade</li>
+            <li><code>prioridade</code> - opcional, <code>0</code> para não prioridade ou <code>1</code> para prioridade; com <code>1</code>, a pessoa vai para o guichê de prioridade, mesmo que a coluna <code>guiche</code> esteja preenchida</li>
             <li><code>id</code> - opcional, usado para atualizar o mesmo participante ao reimportar dados exportados</li>
-            <li><code>guiche</code> - opcional, definido automaticamente pelas faixas quando ausente</li>
+            <li><code>guiche</code> - opcional, definido automaticamente pela prioridade ou pelas faixas quando ausente</li>
             <li>Campos de consulta aceitos no CSV exportado: <code>situacao</code>, <code>responsavel</code>, horários e <code>revisao</code>; eles são ignorados na importação.</li>
           </ul>
           <label class="field">Arquivo CSV ou JSON<input id="participants-file" type="file" accept=".csv,.json,text/csv,application/json" required></label>
@@ -89,6 +148,20 @@
         </form>
         <p id="participants-import-status" class="muted" role="status"></p>
       </section>
+      <section class="dashboard-tool" id="guiches-tools" role="tabpanel" aria-labelledby="guiches-tools-title" hidden>
+        <p>Distribua todas as letras de A a Z, sem sobreposição. Ao salvar, quem ainda não começou a busca do kit passa para o novo guichê. Renomear um guichê (mesma faixa, outro nome) atualiza todos os participantes e atendentes daquele guichê. Guichês informados na coluna <code>guiche</code> do CSV são mantidos, exceto para quem tem prioridade.</p>
+        <div id="range-rows" class="range-rows"></div>
+        <label class="field priority-desk-field">Guichê de prioridade
+          <input id="priority-guiche" maxlength="24" placeholder="Deixe vazio para desativar">
+          <span class="muted">Quem tem prioridade vai sempre para este guichê, inclusive se a coluna <code>guiche</code> do CSV estiver preenchida. Quem já começou a busca do kit não muda.</span>
+        </label>
+        <div class="dashboard-tool-actions">
+          <button class="button secondary small" id="add-range" type="button">Adicionar faixa</button>
+          <button class="button small" id="save-ranges" type="button">Salvar guichês</button>
+        </div>
+        <p id="ranges-status" class="muted" role="status"></p>
+      </section>
+      </div>
       <section class="card dashboard-tool" aria-labelledby="google-sheets-title">
         <h2 id="google-sheets-title">Backup no Google Sheets</h2>
         <p>Crie uma planilha na conta que deve receber os dados. Ela continuará sendo uma cópia de segurança; o banco local é a fonte principal.</p>
@@ -103,16 +176,6 @@
           <button id="copy-google-sheets-script" class="button secondary small" type="button">Copiar Apps Script</button>
         </div>
         <p id="google-sheets-status" class="muted" role="status"></p>
-      </section>
-      <section class="card dashboard-tool" aria-labelledby="guiches-tools-title">
-        <h2 id="guiches-tools-title">Configuração dos guichês</h2>
-        <p>Distribua todas as letras de A a Z, sem sobreposição. A mudança vale para novas importações; reimporte a lista para atualizar guichês de quem ainda não iniciou a busca.</p>
-        <div id="range-rows" class="range-rows"></div>
-        <div class="dashboard-tool-actions">
-          <button class="button secondary small" id="add-range" type="button">Adicionar faixa</button>
-          <button class="button small" id="save-ranges" type="button">Salvar guichês</button>
-        </div>
-        <p id="ranges-status" class="muted" role="status"></p>
       </section>
     </div>
   </main>
