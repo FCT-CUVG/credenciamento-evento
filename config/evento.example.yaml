@@ -1,0 +1,23 @@
+# Copie este arquivo para evento.yaml e personalize a identidade do seu evento.
+name: Nome do Evento
+short_name: EVENTO
+registration_hint_en: "use your CPF number used during registration"
+registration_hint_pt: "Use seu CPF utilizado durante a inscrição"
+logo: event-logo.svg
+# decoration: event-decoration.svg
+
+fonts:
+  body: noto-sans.woff2
+  display: bebas-neue.woff2
+
+# Cores em hexadecimal de seis dígitos; mantenha as aspas.
+colors:
+  primary: "#18515a"
+  navigation: "#123a56"
+  text: "#1f2933"
+  text_muted: "#52606d"
+  action: "#197a53"
+  action_hover: "#126342"
+  focus: "#e09f3e"
+  page_background: "#f4f7f5"
+  surface: "#ffffff"

@@ -35,7 +35,12 @@ CSV = DATA / "participantes.csv"
 STATIC = ROOT / "static"
 GOOGLE_SHEETS_SCRIPT = ROOT / "google-sheets" / "Code.gs"
 RANGES = Path(os.environ.get("CHECKIN_RANGES_FILE", ROOT / "config" / "guiches.json"))
-EVENT_CONFIG = Path(os.environ.get("CHECKIN_EVENT_CONFIG", ROOT / "config" / "evento.yaml"))
+DEFAULT_EVENT_CONFIG = ROOT / "config" / "evento.yaml"
+EXAMPLE_EVENT_CONFIG = ROOT / "config" / "evento.example.yaml"
+EVENT_CONFIG = Path(os.environ.get(
+    "CHECKIN_EVENT_CONFIG",
+    DEFAULT_EVENT_CONFIG if DEFAULT_EVENT_CONFIG.exists() else EXAMPLE_EVENT_CONFIG,
+))
 SECRET = os.environ.get("CHECKIN_SESSION_SECRET", "").encode()
 SHEET_URL = os.environ.get("CHECKIN_SHEETS_URL", "")
 SHEET_SECRET = os.environ.get("CHECKIN_SHEETS_SECRET", "")

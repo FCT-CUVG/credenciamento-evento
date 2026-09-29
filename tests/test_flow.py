@@ -225,12 +225,14 @@ class FlowTest(unittest.TestCase):
 
     def test_brand_assets_and_pages_are_served_locally(self):
         event = app.event_config()
+        logo_type = "image/svg+xml" if event["logo"].endswith(".svg") else "image/png"
+        assets = [(f"/assets/{event['logo']}", logo_type),
+                  *((f"/assets/{font}", "font/woff2") for font in event["fonts"].values())]
+        if event.get("decoration"):
+            assets.append((f"/assets/{event['decoration']}", "image/svg+xml"))
         for path, expected_type in (("/", "text/html"), ("/painel/resumo", "text/html"),
                                     ("/app.css", "text/css"),
-                                    (f"/assets/{event['logo']}", "image/png"),
-                                    (f"/assets/{event['decoration']}", "image/svg+xml"),
-                                    ("/assets/bebas-neue.woff2", "font/woff2"),
-                                    ("/assets/noto-sans.woff2", "font/woff2")):
+                                    *assets):
             code, body, headers = self.request(path, json_response=False)
             self.assertEqual(code, 200)
             self.assertTrue(headers["Content-Type"].startswith(expected_type))
@@ -256,7 +258,7 @@ class FlowTest(unittest.TestCase):
         event = app.event_config()
         config_file.write_text(current.replace(event["name"], "Encontro Exemplo")
                           .replace(f"short_name: {event['short_name']}", "short_name: Encontro")
-                          .replace('"#313267"', '"#123456"'), encoding="utf-8")
+                          .replace(f'"{event["colors"]["primary"]}"', '"#123456"'), encoding="utf-8")
         with patch.object(app, "EVENT_CONFIG", config_file):
             code, event, _ = self.request("/api/event")
             self.assertEqual((code, event["name"], event["short_name"]),
@@ -281,15 +283,19 @@ class FlowTest(unittest.TestCase):
     def test_event_yaml_allows_missing_decoration(self):
         config_file = Path(self.temp.name) / "evento.yaml"
         current = app.EVENT_CONFIG.read_text(encoding="utf-8")
-        event = app.event_config()
-        config_file.write_text(current.replace(f"decoration: {event['decoration']}\n", ""), encoding="utf-8")
+        decoration = "event-decoration.svg"
+        current_with_decoration = "\n".join(
+            line for line in current.splitlines() if not line.startswith("decoration:"))
+        config_file.write_text(
+            (current_with_decoration + f"\ndecoration: {decoration}\n").replace(
+                f"decoration: {decoration}\n", ""), encoding="utf-8")
         with patch.object(app, "EVENT_CONFIG", config_file):
             self.assertNotIn("decoration", app.event_config())
             code, css, _ = self.request("/theme.css", json_response=False)
             self.assertEqual(code, 200)
             self.assertIn(b"--event-decoration: none", css)
             self.assertIn(b"--event-decoration-opacity: 0", css)
-            self.assertEqual(self.request(f"/assets/{event['decoration']}", json_response=False)[0], 404)
+            self.assertEqual(self.request(f"/assets/{decoration}", json_response=False)[0], 404)
 
     def test_event_yaml_rejects_unsafe_asset_and_bad_color(self):
         config_file = Path(self.temp.name) / "evento.yaml"
@@ -299,7 +305,7 @@ class FlowTest(unittest.TestCase):
             config_file.write_text(original.replace(event["logo"], "../outside.png"), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "logo"):
                 app.event_config()
-            config_file.write_text(original.replace('"#313267"', '"red; background:url(evil)"'), encoding="utf-8")
+            config_file.write_text(original.replace(f'"{event["colors"]["primary"]}"', '"red; background:url(evil)"'), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "color"):
                 app.event_config()
 
