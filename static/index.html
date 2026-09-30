@@ -25,32 +25,18 @@
       <div class="form-panel">
         <section class="stack" id="public-search" aria-labelledby="search-title">
           <h2 id="search-title" data-i18n="searchTitle">FIND YOUR REGISTRATION</h2>
-          <p class="field-intro" data-i18n="searchIntro">Use the CPF informado na inscrição.</p>
+          <p class="field-intro" data-i18n="searchIntro">Use the CPF from your registration or, if you don't have one, your e-mail.</p>
           <form id="lookup-form" class="form">
-            <label class="field"><span data-i18n="cpfLabel">CPF</span>
+            <label class="field" id="cpf-field"><span data-i18n="cpfLabel">CPF</span>
               <input name="cpf" inputmode="numeric" autocomplete="off" required maxlength="14" placeholder="000.000.000-00" data-i18n-placeholder="cpfPlaceholder">
             </label>
-            <button class="button secondary small lookup-alternative" id="lookup-alternative" type="button">or use your full name and e-mail</button>
-            <div class="lookup-alternative-fields hidden" id="lookup-alternative-fields">
-              <label class="field"><span id="lookup-name-label">Full name</span>
-                <input name="name" autocomplete="name">
-              </label>
-              <label class="field"><span id="lookup-email-label">E-mail</span>
-                <input name="email" type="email" autocomplete="email">
-              </label>
-            </div>
+            <label class="field hidden" id="email-field"><span data-i18n="emailLabel">E-mail</span>
+              <input name="email" type="email" autocomplete="email" maxlength="254" placeholder="name@example.com" data-i18n-placeholder="emailPlaceholder">
+            </label>
+            <button class="button secondary small lookup-alternative" id="lookup-alternative" type="button" data-i18n="useEmail">No CPF? Use your e-mail</button>
             <button class="button full" type="submit" data-i18n="searchButton">Find registration</button>
           </form>
           <p id="lookup-error" class="alert hidden" role="alert"></p>
-        </section>
-        <section class="stack hidden" id="public-confirm" aria-labelledby="found-name">
-          <p class="event-meta" data-i18n="foundEyebrow">REGISTRATION FOUND</p>
-          <h2 id="found-name" class="person-name"></h2>
-          <p id="found-affiliation" class="big muted"></p>
-          <p id="confirm-intro" data-i18n="confirmIntro">Check your details. Confirm your arrival so the team can prepare your badge and kit.</p>
-          <button class="button full" id="precheck-button" data-i18n="confirmButton">Confirm my arrival</button>
-          <button class="button secondary full" id="retry-button" data-i18n="retryButton">Change search</button>
-          <p id="confirm-error" class="alert hidden" role="alert"></p>
         </section>
         <section class="stack hidden" id="public-done" aria-labelledby="done-title">
           <p class="event-meta" data-i18n="doneEyebrow">PRE-CHECK-IN COMPLETE</p>
@@ -65,15 +51,24 @@
           <button class="button secondary full" id="done-retry" data-i18n="doneRetry">Find another registration</button>
         </section>
         <section class="stack hidden" id="public-pending" aria-labelledby="pending-title">
-          <p class="event-meta" data-i18n="pendingEyebrow">ARRIVAL RECORDED</p>
-          <h2 id="pending-title" data-i18n="pendingTitle">PLEASE FIND A VOLUNTEER</h2>
+          <p class="event-meta" data-i18n="pendingEyebrow">REGISTRATION FOUND</p>
           <p class="person-name big" id="pending-name"></p>
-          <p class="alert" data-i18n="pendingIntro">Your arrival has been recorded. Please find a volunteer for guidance before collecting your badge and kit.</p>
+          <div class="notice-callout" role="status">
+            <h2 id="pending-title" class="notice-callout-title" data-i18n="pendingTitle">PLEASE FIND A VOLUNTEER</h2>
+            <p data-i18n="pendingIntro">Your arrival has been recorded, but your registration has a pending item. Please find a volunteer for guidance before collecting your badge and kit.</p>
+          </div>
           <button class="button secondary full" id="pending-retry" data-i18n="doneRetry">Find another registration</button>
+        </section>
+        <section class="stack hidden" id="public-notfound" aria-labelledby="notfound-title">
+          <div class="notice-callout" role="alert">
+            <h2 id="notfound-title" class="notice-callout-title" data-i18n="notFoundTitle">REGISTRATION NOT FOUND</h2>
+            <p id="notfound-text"></p>
+          </div>
+          <button class="button full" id="notfound-retry" data-i18n="notFoundRetry">Search again</button>
         </section>
       </div>
     </div>
-    <div class="help-strip"><strong data-i18n="helpTitle">Can't find your registration?</strong><span data-i18n="helpText">Check the CPF and try again. If you need help, ask at the check-in desk or speak to a volunteer.</span></div>
+    <div class="help-strip"><strong data-i18n="helpTitle">Can't find your registration?</strong><span data-i18n="helpText">Check your CPF or e-mail and try again. If you need help, ask at the check-in desk or speak to a volunteer.</span></div>
   </main>
 </body>
 </html>

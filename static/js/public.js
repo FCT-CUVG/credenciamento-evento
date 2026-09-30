@@ -7,50 +7,56 @@ const translations = {
     heroTitle: 'HAVE YOU ARRIVED?',
     heroIntro: "Let the team know you've arrived. Then collect your badge and kit at the check-in desk.",
     searchTitle: 'FIND YOUR REGISTRATION',
-    searchIntro: 'Use the CPF from your registration.',
+    searchIntro: "Use the CPF from your registration or, if you don't have one, your e-mail.",
     cpfLabel: 'CPF',
     cpfPlaceholder: '000.000.000-00',
+    emailLabel: 'E-mail',
+    emailPlaceholder: 'name@example.com',
+    useEmail: 'No CPF? Use your e-mail',
+    useCpf: 'Use your CPF instead',
     searchButton: 'Find registration',
-    foundEyebrow: 'REGISTRATION FOUND',
-    confirmIntro: 'Check your details. Confirm your arrival so the team can prepare your badge and kit.',
-    confirmButton: 'Confirm my arrival',
-    noAffiliation: 'No affiliation provided',
-    retryButton: 'Change search',
     doneEyebrow: 'PRE-CHECK-IN COMPLETE',
     doneTitle: 'ARRIVAL CONFIRMED',
     doneIntro: 'Collect your badge and kit at this desk. Ask a volunteer if you need directions.',
     deskLabel: 'Go to desk',
     doneRetry: 'Find another registration',
     helpTitle: "Can't find your registration?",
-    helpText: 'Check the CPF and try again. If you need help, ask at the check-in desk or speak to a volunteer.',
-    pendingEyebrow: 'ARRIVAL RECORDED',
+    helpText: 'Check your CPF or e-mail and try again. If you need help, ask at the check-in desk or speak to a volunteer.',
+    pendingEyebrow: 'REGISTRATION FOUND',
     pendingTitle: 'PLEASE FIND A VOLUNTEER',
-    pendingIntro: 'Your arrival has been recorded. Please find a volunteer for guidance before collecting your badge and kit.'
+    pendingIntro: 'Your arrival has been recorded, but your registration has a pending item. Please find a volunteer for guidance before collecting your badge and kit.',
+    notFoundTitle: 'REGISTRATION NOT FOUND',
+    notFoundText: 'Check the CPF or e-mail and search again. If you still can\'t find it, please find a volunteer or go to the check-in desk.',
+    ambiguousText: 'More than one registration uses this e-mail. Search with your CPF or find a volunteer for help.',
+    notFoundRetry: 'Search again'
   },
   'pt-BR': {
     brand: 'Credenciamento',
     heroTitle: 'VOCÊ CHEGOU?',
     heroIntro: 'Avise à equipe que você chegou. Depois, retire seu crachá e kit no atendimento.',
     searchTitle: 'LOCALIZE SUA INSCRIÇÃO',
-    searchIntro: 'Use o CPF informado na sua inscrição.',
+    searchIntro: 'Use o CPF informado na sua inscrição ou, se não tiver CPF, o e-mail.',
     cpfLabel: 'CPF',
     cpfPlaceholder: '000.000.000-00',
+    emailLabel: 'E-mail',
+    emailPlaceholder: 'nome@exemplo.com',
+    useEmail: 'Não tem CPF? Use seu e-mail',
+    useCpf: 'Usar o CPF',
     searchButton: 'Buscar inscrição',
-    foundEyebrow: 'INSCRIÇÃO LOCALIZADA',
-    confirmIntro: 'Confira seus dados. Ao confirmar, a equipe saberá que você chegou e poderá preparar seu crachá e kit.',
-    confirmButton: 'Confirmar minha chegada',
-    noAffiliation: 'Afiliação não informada',
-    retryButton: 'Corrigir a busca',
     doneEyebrow: 'PRÉ-CHECK-IN CONCLUÍDO',
     doneTitle: 'PRESENÇA CONFIRMADA',
     doneIntro: 'Retire seu crachá e kit neste guichê. Se não souber para onde ir, peça orientação a um voluntário.',
     deskLabel: 'Dirija-se ao guichê',
     doneRetry: 'Consultar outra inscrição',
     helpTitle: 'Não encontrou sua inscrição?',
-    helpText: 'Confira o CPF e tente novamente. Se precisar de ajuda, procure o atendimento ou um voluntário.',
-    pendingEyebrow: 'CHEGADA REGISTRADA',
+    helpText: 'Confira o CPF ou o e-mail e tente novamente. Se precisar de ajuda, procure o atendimento ou um voluntário.',
+    pendingEyebrow: 'INSCRIÇÃO LOCALIZADA',
     pendingTitle: 'PROCURE UM VOLUNTÁRIO',
-    pendingIntro: 'Sua chegada foi registrada. Procure um voluntário para receber orientações antes de retirar seu crachá e kit.'
+    pendingIntro: 'Sua chegada foi registrada, mas há uma pendência na sua inscrição. Procure um voluntário para receber orientações antes de retirar seu crachá e kit.',
+    notFoundTitle: 'INSCRIÇÃO NÃO ENCONTRADA',
+    notFoundText: 'Confira o CPF ou o e-mail e busque novamente. Se ainda assim não encontrar, procure um voluntário ou o atendimento.',
+    ambiguousText: 'Há mais de uma inscrição com este e-mail. Busque pelo CPF ou procure um voluntário.',
+    notFoundRetry: 'Buscar novamente'
   }
 };
 
@@ -63,10 +69,10 @@ const store = {
 const RESULT_TTL = 12 * 60 * 60 * 1000;
 
 let language = ['en', 'pt-BR'].includes(store.get('language')) ? store.get('language') : 'en';
-let lookupToken = null, affiliation = null, desk = null, errorState = null;
+let desk = null, errorState = null, notFound = null, useEmail = false;
 
 function show(id) {
-  for (const key of ['public-search', 'public-confirm', 'public-done', 'public-pending']) {
+  for (const key of ['public-search', 'public-done', 'public-pending', 'public-notfound']) {
     $(key).classList.toggle('hidden', key !== id);
   }
 }
@@ -83,26 +89,31 @@ function renderDesk() {
   $('done-desk-range').classList.toggle('hidden', !desk.priority && !ranges.length);
 }
 
-function renderAffiliation() {
-  if (affiliation === null) return;
-  const node = $('found-affiliation');
-  node.textContent = affiliation || translations[language].noAffiliation;
-  node.classList.toggle('affiliation-missing', !affiliation);
+// Busca por CPF ou, para quem não tem CPF, por e-mail.
+function renderLookupMethod() {
+  const form = $('lookup-form');
+  const cpfInput = form.elements.namedItem('cpf'), emailInput = form.elements.namedItem('email');
+  $('cpf-field').classList.toggle('hidden', useEmail);
+  $('email-field').classList.toggle('hidden', !useEmail);
+  cpfInput.required = !useEmail;
+  emailInput.required = useEmail;
+  $('lookup-alternative').textContent = translations[language][useEmail ? 'useCpf' : 'useEmail'];
 }
 
-function errorText(err, action) {
+function renderNotFound() {
+  if (notFound) $('notfound-text').textContent = translations[language][notFound === 409 ? 'ambiguousText' : 'notFoundText'];
+}
+
+function errorText(err) {
   if (language === 'pt-BR') return err.message;
   if (err.status === 429) return 'Too many attempts. Please wait a minute and try again.';
-  if (action === 'lookup' && err.status === 400) return 'Enter a valid CPF with 11 digits.';
-  if (action === 'lookup' && err.status === 404) return 'Registration not found. Check the CPF or ask the team for help.';
-  if (action === 'precheck' && err.status === 400) return 'This search has expired. Please try again.';
-  if (action === 'precheck' && err.status === 404) return 'Registration not found. Please search again.';
+  if (err.status === 400) return useEmail ? 'Enter the e-mail used in your registration.' : 'Enter a valid CPF with 11 digits.';
   return 'Something went wrong. Please try again.';
 }
 
-function showError(id, err, action) {
-  errorState = {id, err, action};
-  message(id, errorText(err, action));
+function showError(err) {
+  errorState = {err};
+  message('lookup-error', errorText(err));
 }
 
 function setLanguage(value) {
@@ -121,9 +132,10 @@ function setLanguage(value) {
     node.placeholder = translations[language][node.dataset.i18nPlaceholder];
   }
   $('language-switch').textContent = english ? 'Português (BR)' : 'English';
-  if (errorState) message(errorState.id, errorText(errorState.err, errorState.action));
+  if (errorState) message('lookup-error', errorText(errorState.err));
+  renderLookupMethod();
   renderDesk();
-  renderAffiliation();
+  renderNotFound();
 }
 
 function showResult(result) {
@@ -142,39 +154,21 @@ function showResult(result) {
 function init() {
   const form = $('lookup-form');
   const cpfInput = form.elements.namedItem('cpf');
-  const nameInput = form.elements.namedItem('name');
   const emailInput = form.elements.namedItem('email');
-  const alternativeButton = $('lookup-alternative');
-  const alternativeFields = $('lookup-alternative-fields');
 
-  const renderAlternative = () => {
-    const pt = language === 'pt-BR';
-    alternativeButton.textContent = pt ? 'ou use seu nome completo e e-mail' : 'or use your full name and e-mail';
-    $('lookup-name-label').textContent = pt ? 'Nome completo' : 'Full name';
-    $('lookup-email-label').textContent = 'E-mail';
-  };
-  const resetLookupMethod = () => {
-    alternativeFields.classList.add('hidden');
-    cpfInput.required = true;
-    nameInput.required = false;
-    emailInput.required = false;
-  };
-
-  alternativeButton.addEventListener('click', () => {
-    alternativeFields.classList.remove('hidden');
-    cpfInput.required = false;
-    nameInput.required = true;
-    emailInput.required = true;
-    cpfInput.value = '';
-    nameInput.focus();
+  $('lookup-alternative').addEventListener('click', () => {
+    useEmail = !useEmail;
+    errorState = null;
+    message('lookup-error', '');
+    renderLookupMethod();
+    (useEmail ? emailInput : cpfInput).focus();
   });
   $('language-switch').addEventListener('click', () => {
     setLanguage(language === 'en' ? 'pt-BR' : 'en');
     store.set('language', language);
-    renderAlternative();
   });
-  renderAlternative();
 
+  // Um passo só: encontrou, registra a chegada e mostra o guichê (ou pede orientação).
   form.addEventListener('submit', async event => {
     event.preventDefault();
     errorState = null;
@@ -182,28 +176,7 @@ function init() {
     const button = form.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
-      const data = await api('/api/lookup', {
-        cpf: cpfInput.value.trim(), name: nameInput.value.trim(), email: emailInput.value.trim()
-      });
-      lookupToken = data.token || null;
-      $('found-name').textContent = data.name;
-      affiliation = data.affiliation || '';
-      renderAffiliation();
-      show('public-confirm');
-    } catch (err) {
-      showError('lookup-error', err, 'lookup');
-    } finally {
-      button.disabled = false;
-    }
-  });
-
-  $('precheck-button').addEventListener('click', async () => {
-    const button = $('precheck-button');
-    button.disabled = true;
-    errorState = null;
-    message('confirm-error', '');
-    try {
-      const data = await api('/api/precheck', {token: lookupToken});
+      const data = await api('/api/checkin', useEmail ? {email: emailInput.value.trim()} : {cpf: cpfInput.value.trim()});
       const result = {
         name: data.name, needs_guidance: data.needs_guidance, guiche: data.guiche,
         guiche_ranges: data.guiche_ranges, guiche_priority: data.guiche_priority, saved_at: Date.now()
@@ -211,25 +184,39 @@ function init() {
       store.set('result', result);
       showResult(result);
     } catch (err) {
-      showError('confirm-error', err, 'precheck');
+      if (err.status === 404 || err.status === 409) {
+        notFound = err.status;
+        renderNotFound();
+        show('public-notfound');
+        $('notfound-retry').focus();
+      } else {
+        showError(err);
+      }
     } finally {
       button.disabled = false;
     }
   });
 
+  // Nova busca mantém o método escolhido (CPF ou e-mail) e o que foi digitado, para corrigir.
+  $('notfound-retry').addEventListener('click', () => {
+    notFound = null;
+    show('public-search');
+    (useEmail ? emailInput : cpfInput).focus();
+  });
+
   const retry = () => {
     store.remove('result');
     form.reset();
-    resetLookupMethod();
-    lookupToken = null;
+    useEmail = false;
+    renderLookupMethod();
     desk = null;
+    notFound = null;
     errorState = null;
     message('lookup-error', '');
-    message('confirm-error', '');
     show('public-search');
     cpfInput.focus();
   };
-  for (const id of ['retry-button', 'done-retry', 'pending-retry']) $(id).addEventListener('click', retry);
+  for (const id of ['done-retry', 'pending-retry']) $(id).addEventListener('click', retry);
 
   const saved = store.get('result');
   if (saved && typeof saved.name === 'string' && Date.now() - saved.saved_at < RESULT_TTL) showResult(saved);

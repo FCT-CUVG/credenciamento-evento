@@ -4,12 +4,12 @@ Sistema local para pré-check-in, busca de kits, atendimento em guichês e acomp
 
 ## Fluxo
 
-1. Participante abre `/` pelo QR Code, informa o CPF (ou nome completo e e-mail) como constam na inscrição e confirma presença. Ao confirmar, a página mostra o número do guichê de retirada e a faixa de letras atendida por ele. A página abre em inglês e oferece um botão para português brasileiro.
+1. Participante abre `/` pelo QR Code e informa o CPF da inscrição (ou, se não tiver CPF, o e-mail). Num passo só, a página registra a chegada e mostra o número do guichê de retirada e a faixa de letras atendida por ele. Se a inscrição tiver pendência, a chegada também é registrada e a página pede, em destaque, que a pessoa procure um voluntário. Se não encontrar a inscrição (ou houver mais de uma com o mesmo e-mail), a página avisa em destaque e oferece buscar de novo ou procurar um voluntário. A página abre em inglês e oferece um botão para português brasileiro.
 2. Voluntário abre `/busca`, assume uma pessoa, busca o kit e marca que o deixou no guichê mostrado no cartão.
 3. Atendente abre `/fila` e confirma a retirada após entregar o kit. A conta do atendente determina o guichê inicial; o menu permite consultar outros guichês, mas cada atendente só pode confirmar entregas do próprio guichê. Na tela de um guichê, os cartões mostram os 3 primeiros dígitos do CPF para conferência; o número do guichê aparece nos cartões apenas em "Todos os guichês".
 4. Qualquer pessoa pode abrir `/painel/resumo`, sem login, para acompanhar inscritos, pessoas que chegaram e participantes credenciados. A coordenação usa `/painel` para ver também as etapas intermediárias, a lista individual, o estado da sincronização, a importação/exportação de participantes e as faixas dos guichês. Pendências (pagamento não confirmado ou afiliação não informada) são tratadas no próprio painel detalhado: o atalho "Pendências de orientação" filtra quem chegou com pendência, o pagamento e a prioridade são alterados na linha, e a afiliação pode ser preenchida ali mesmo. Resolvidas as pendências, a pessoa entra na fila de separação ou pode ser credenciada direto pela linha de etapas. A página pública não informa o motivo: só pede que a pessoa procure um voluntário para orientações.
 
-As telas operacionais da equipe exigem conta e senha; o resumo público mostra apenas três totais. A busca pública retorna somente nome e afiliação com os caracteres centrais de cada palavra mascarados, além de um token aleatório de uso único, válido por dez minutos, para confirmar a chegada. Ela não informa CPF, e-mail, pagamento ou situação da inscrição; quem não conseguir confirmar deve procurar atendimento. O menu da equipe mostra todos os guichês de `config/guiches.json`, além dos guichês atribuídos diretamente a participantes ou atendentes. A fila atualiza automaticamente a cada cinco segundos; os painéis, a cada dez segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
+As telas operacionais da equipe exigem conta e senha; o resumo público mostra apenas três totais. A busca pública retorna somente o nome com os caracteres centrais de cada palavra mascarados e o guichê (ou o aviso para procurar um voluntário). Ela não informa CPF, e-mail, afiliação, pagamento nem o motivo de uma pendência, e tem limite de tentativas por IP. Buscar de novo uma inscrição já registrada só mostra o mesmo resultado, sem registrar outra chegada. O menu da equipe mostra todos os guichês de `config/guiches.json`, além dos guichês atribuídos diretamente a participantes ou atendentes. A fila atualiza automaticamente a cada cinco segundos; os painéis, a cada dez segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
 
 ## Instalação e implantação
 
@@ -213,7 +213,7 @@ CSV (separado por vírgula, ponto e vírgula ou tabulação) ou JSON (lista de o
 | Coluna | Obrigatória | Regra |
 |---|---|---|
 | `nome` | sim | Nome completo. A primeira letra define o guichê. |
-| `email` | sim | Junto com o nome, identifica a pessoa numa reimportação. |
+| `email` | sim | Junto com o nome, identifica a pessoa numa reimportação. Na página pública, serve para buscar a inscrição de quem não tem CPF. |
 | `nome_cracha` | não | Vazio: usa o primeiro e o último nome. |
 | `afiliacao` | não | Vazia: a pessoa registra a chegada, mas fica em "Orientação pendente" até alguém preencher. |
 | `cpf` | não | 11 dígitos ou `xxx.xxx.xxx-xx`. |

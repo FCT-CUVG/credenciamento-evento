@@ -48,8 +48,7 @@ class ImportExportTest(CredenciamentoTestCase):
         self.assertEqual(tuple(row), ("Joana Silva", ""))
 
     def test_reimport_changes_guiche_preserves_status(self):
-        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
-        self.request("/api/precheck", {"token": found["token"]})
+        self.request("/api/checkin", {"cpf": "12345678901"})
         input_file = Path(self.temp.name) / "updated.json"
         input_file.write_text(json.dumps([{"nome": "Ána Silva", "nome_cracha": "Ana", "afiliacao": "Instituto A",
                             "email": "ana@example.org", "cpf": "12345678901", "pago": 1,
@@ -73,7 +72,7 @@ class ImportExportTest(CredenciamentoTestCase):
             rows = db.execute("SELECT id, name, email FROM participants WHERE name_key=? AND email_key=?",
                               (common.normalize(updated["nome"]), updated["email"].casefold())).fetchall()
         self.assertEqual([tuple(row) for row in rows], [(pid, updated["nome"], updated["email"])])
-        code, found, _ = self.request("/api/lookup", {"name": "Carla Oliveira", "email": "carla.nova@example.org"})
+        code, found, _ = self.request("/api/checkin", {"email": "Carla.Nova@example.org"})
         self.assertEqual((code, found["name"]), (200, "C***a O******a"))
 
     def test_admin_exports_and_reimports_participants_without_resetting_status(self):
@@ -106,9 +105,7 @@ class ImportExportTest(CredenciamentoTestCase):
         self.assertEqual(set(logs[0]), set(csv_io.EVENT_LOG_COLUMNS))
         self.assertEqual({row["acao"] for row in logs}, {"import"})
 
-        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
-        self.assertEqual(code, 200)
-        self.assertEqual(self.request("/api/precheck", {"token": found["token"]})[0], 200)
+        self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
         original_id = next(row["id"] for row in rows if row["email"] == "ana@example.org")
         for row in rows:
             if row["id"] == original_id:
@@ -132,9 +129,7 @@ class ImportExportTest(CredenciamentoTestCase):
 
     def test_web_import_is_atomic_when_active_desk_would_change(self):
         admin = self.login("admin")
-        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
-        self.assertEqual(code, 200)
-        self.request("/api/precheck", {"token": found["token"]})
+        self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
         with database.connect() as db:
             pid = db.execute("SELECT id FROM participants WHERE name_key='ana silva'").fetchone()[0]
         volunteer = self.login("vol1")

@@ -44,8 +44,7 @@ class DesksTest(CredenciamentoTestCase):
         self.assertIn({"id": "P", "ranges": [], "priority": True},
                       self.request("/api/guiches", cookie=admin[0])[1]["guiches"])
         for cpf in ("12345678901", "11111111111"):
-            token = self.request("/api/lookup", {"cpf": cpf})[1]["token"]
-            code, done, _ = self.request("/api/precheck", {"token": token})
+            code, done, _ = self.request("/api/checkin", {"cpf": cpf})
         self.assertEqual((code, done["guiche"], done["guiche_ranges"], done["guiche_priority"]), (200, "P", [], True))
         queue = self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"]
         self.assertEqual([(item["name"], item["priority"]) for item in queue],
@@ -81,8 +80,7 @@ class DesksTest(CredenciamentoTestCase):
         with database.connect() as db:
             actions = [r[0] for r in db.execute("SELECT action FROM events WHERE participant_id=? AND action LIKE 'priority_%' ORDER BY rowid", (pid,))]
         self.assertEqual(actions, ["priority_on", "priority_off"])
-        token = self.request("/api/lookup", {"cpf": "98765432100"})[1]["token"]
-        self.request("/api/precheck", {"token": token})
+        self.request("/api/checkin", {"cpf": "98765432100"})
         self.assertEqual(self.request("/api/action/claim", {"id": pid}, *self.login("vol1"))[0], 200)
         queue_data = self.request("/api/queue", cookie=self.login("vol1")[0])[1]
         self.assertEqual(queue_data["priority_guiche"], "P")
@@ -97,8 +95,7 @@ class DesksTest(CredenciamentoTestCase):
             {"nome": "Carla Manual", "email": "carla@example.org", "afiliacao": "C", "pago": 1, "guiche": "7"},
             {"nome": "Diego Rocha", "email": "diego@example.org", "afiliacao": "D", "pago": 1},
             {"nome": "Zé Prioridade", "email": "ze@example.org", "afiliacao": "Z", "pago": 1, "prioridade": 1}]), ".json")
-        token = self.request("/api/lookup", {"cpf": "12345678901"})[1]["token"]
-        self.request("/api/precheck", {"token": token})
+        self.request("/api/checkin", {"cpf": "12345678901"})
         with database.connect() as db:
             ana = db.execute("SELECT id FROM participants WHERE email='ana@example.org'").fetchone()[0]
         self.assertEqual(self.request("/api/action/claim", {"id": ana}, *self.login("vol1"))[0], 200)
