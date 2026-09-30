@@ -70,3 +70,21 @@ python3 -m unittest discover -s tests -v
 ```
 
 Antes do uso real, teste o fluxo completo em vários celulares e guichês com uma cópia da lista, confirme o domínio HTTPS e faça um ensaio de perda de rede e retorno da sincronização.
+
+## Organização do código
+
+`app.py` é só o ponto de entrada; o código fica no pacote `credenciamento/`:
+
+| Módulo | Responsabilidade |
+|---|---|
+| `settings.py` | Caminhos e variáveis de ambiente (lidos como `settings.NOME` no momento do uso) |
+| `common.py` | Data atual, normalização de nomes e máscara de dados públicos |
+| `event_theme.py` | YAML do evento e geração do `theme.css` |
+| `db.py` | Conexão SQLite, esquema/migrações e `update_participant()`, o único caminho para alterar um participante |
+| `desks.py` | Faixas de letras, guichê de prioridade e propagação de mudanças de guichê |
+| `participants.py` | Etapas da situação e ações da fila de busca e guichê |
+| `csv_io.py` | Importação e exportações CSV/JSON |
+| `auth.py` | Senhas, sessão, CSRF e limite de tentativas |
+| `sheets.py` | Sincronização com o Google Sheets |
+| `web/server.py` | Servidor HTTP e rotas |
+| `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `sync`, `backup` |
