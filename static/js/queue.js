@@ -2,7 +2,7 @@
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, session} from './common.js';
 
 const mode = document.body.dataset.page === 'attendant' ? 'attendant' : 'volunteer';
-let items = [], desk = '', pendingAction = null;
+let items = [], desk = '', priorityDesk = '', pendingAction = null;
 
 const dialogTitles = {
   ready: 'Material no guichê?',
@@ -79,8 +79,11 @@ function queueCard(item, refresh) {
   const content = split ? el('div', 'queue-card-main') : card;
   if (split) card.append(content);
 
+  // No guichê de prioridade, a cor do guichê já identifica a prioridade; o selo fica para quem está em outro guichê.
+  const atPriorityDesk = Boolean(priorityDesk) && item.guiche === priorityDesk;
+  if (atPriorityDesk) card.classList.add('priority-desk');
   const name = el('div', 'name', item.name);
-  if (item.priority) name.append(el('span', 'pill priority', 'Prioridade'));
+  if (item.priority && !atPriorityDesk) name.append(el('span', 'pill priority', 'Prioridade'));
   content.append(name);
 
   // Na tela de um guichê específico, o número do guichê é redundante: mostra o início do CPF.
@@ -170,7 +173,9 @@ async function refresh() {
   try {
     const query = mode === 'attendant' ? '?view=attendant&guiche=' + encodeURIComponent(desk || 'all')
       : desk ? '?guiche=' + encodeURIComponent(desk) : '';
-    items = (await api('/api/queue' + query)).items;
+    const data = await api('/api/queue' + query);
+    items = data.items;
+    priorityDesk = data.priority_guiche || '';
     renderQueue(refresh);
     $('last-update').textContent = 'Atualizado ' + clockTime();
     message('page-error', '');

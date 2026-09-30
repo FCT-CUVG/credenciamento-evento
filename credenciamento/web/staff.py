@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..csv_io import export_csv
 from ..db import connect, get_participant, participant_dict, update_participant
-from ..desks import available_guiches
+from ..desks import available_guiches, priority_guiche
 from ..participants import queue_action_fields
 from .routes import STAFF, route
 
@@ -37,7 +37,8 @@ def queue(req, user, data):
         else:
             query += " ORDER BY priority DESC, prechecked_at ASC, name_key ASC"
         rows = db.execute(query, args).fetchall()
-    return req.respond(200, {"items": [participant_dict(r) for r in rows], "guiche": guiche})
+    return req.respond(200, {"items": [participant_dict(r) for r in rows], "guiche": guiche,
+                             "priority_guiche": priority_guiche()})
 
 
 @route("POST", "/api/logout", roles=STAFF)
