@@ -235,6 +235,8 @@ CSV (separado por vírgula, ponto e vírgula ou tabulação) ou JSON (lista de o
 - Ao salvar a configuração, quem ainda não começou a busca muda de guichê na hora. Renomear um guichê, mantendo a mesma faixa, leva junto todos os participantes e as contas de atendente daquele guichê.
 - Um guichê informado na coluna `guiche`, diferente do calculado, é tratado como escolha manual e mantido (exceto para quem tem prioridade).
 - O painel mostra o total de inscritos por guichê.
+- **Dividir pelo número de inscritos**: na mesma aba, informe quantos guichês usar (sem contar o de prioridade) e clique em **Calcular divisão**. O sistema propõe faixas contíguas de letras com números de pessoas o mais parecidos possível (primeiro reduz o guichê mais cheio, depois deixa os demais o mais iguais possível). Uma mesma letra nunca é dividida entre guichês, então letras muito frequentes limitam o equilíbrio. Entram na conta só as pessoas que seguem as faixas: prioritários e guichês manuais ficam de fora. Durante o evento, marque **Contar só quem ainda não retirou o kit** para redividir pelo que falta atender. A proposta reaproveita os nomes atuais dos guichês, mostra o total de cada faixa e só vale depois de **Salvar guichês**; ao salvar, valem as mesmas regras de mudança de guichê acima.
+- Cada faixa mostra, enquanto se edita, quantas pessoas ela atende.
 
 ### Exportações
 

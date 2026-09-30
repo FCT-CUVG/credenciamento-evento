@@ -8,7 +8,8 @@ from .. import settings
 from ..csv_io import (event_logs_download, export_csv, import_text, participants_download,
                       participants_template_download)
 from ..db import connect, get_participant, participant_dict, pending_reasons, update_participant
-from ..desks import available_guiches, configured_ranges, guiche_for, priority_guiche, save_ranges
+from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, configured_ranges, guiche_for,
+                     letter_counts, priority_guiche, save_ranges, validate_priority_guiche)
 from ..participants import STATUS_STEPS, status_fields
 from .routes import ADMIN, route
 
@@ -61,9 +62,12 @@ def participants_template(req, user, data):
 @route("GET", "/api/guiches/config", roles=ADMIN)
 def desk_config(req, user, data):
     try:
-        return req.respond(200, {"ranges": configured_ranges(), "priority_guiche": priority_guiche()})
+        ranges, priority = configured_ranges(), priority_guiche()
     except ValueError as exc:
         return req.respond(500, {"error": str(exc)})
+    with connect() as db:
+        counts = {"all": letter_counts(db, priority), "pending": letter_counts(db, priority, pending_only=True)}
+    return req.respond(200, {"ranges": ranges, "priority_guiche": priority, "letter_counts": counts})
 
 
 @route("POST", "/api/participants/import", roles=ADMIN, max_body=2_000_000,
@@ -156,6 +160,24 @@ def save_desk_config(req, user, data):
     if changed:
         export_csv()
     return req.respond(200, {"ranges": ranges, "priority_guiche": priority, "updated": changed})
+
+
+@route("POST", "/api/guiches/balance", roles=ADMIN, forbidden="Somente a coordenação pode configurar guichês.")
+def balance_desks(req, user, data):
+    """Só calcula a proposta de faixas; nada muda até a coordenação salvar a configuração."""
+    count = str(data.get("count", "")).strip()
+    if not count.isdigit() or not 1 <= int(count) <= 26:
+        return req.respond(400, {"error": "Informe um número de guichês entre 1 e 26."})
+    current = data.get("ranges") if isinstance(data.get("ranges"), list) else None
+    try:
+        priority = validate_priority_guiche(data.get("priority_guiche", priority_guiche()))
+        names = balanced_desk_names(int(count), current or configured_ranges(), priority)
+        with connect() as db:
+            counts = letter_counts(db, priority, pending_only=bool(data.get("pending_only")))
+        ranges = balanced_ranges(counts, names)
+    except ValueError as exc:
+        return req.respond(400, {"error": str(exc)})
+    return req.respond(200, {"ranges": ranges, "priority_guiche": priority})
 
 
 @route("POST", "/api/participants/status", roles=ADMIN, forbidden="Somente a coordenação pode alterar a situação.")

@@ -21,6 +21,26 @@ async function copyText(value) {
   if (!copied) throw new Error('Não foi possível copiar o Apps Script.');
 }
 
+// Inscritos por inicial (quem segue as faixas), para mostrar o total de cada faixa enquanto se edita.
+let letterCounts = {all: {}, pending: {}};
+
+const pendingOnly = () => $('balance-pending').checked;
+
+function rangeTotal(from, to) {
+  const counts = letterCounts[pendingOnly() ? 'pending' : 'all'] || {};
+  const [start, end] = [from.trim().toUpperCase(), to.trim().toUpperCase()];
+  if (!/^[A-Z]$/.test(start) || !/^[A-Z]$/.test(end) || start > end) return null;
+  return Object.entries(counts).reduce((sum, [letter, count]) => sum + (letter >= start && letter <= end ? count : 0), 0);
+}
+
+function updateRangeTotals() {
+  for (const row of $('range-rows').children) {
+    const total = rangeTotal(row.querySelector('[name="from"]').value, row.querySelector('[name="to"]').value);
+    row.querySelector('.range-total').textContent =
+      total === null ? '—' : `${total} ${total === 1 ? 'pessoa' : 'pessoas'}`;
+  }
+}
+
 function renderRangeRows(ranges) {
   const host = $('range-rows');
   host.replaceChildren();
@@ -32,9 +52,11 @@ function renderRangeRows(ranges) {
       input.value = range[key] || '';
       input.maxLength = key === 'guiche' ? 24 : 1;
       input.setAttribute('aria-label', `${label}, faixa ${index + 1}`);
+      input.addEventListener('input', updateRangeTotals);
       field.append(input);
       row.append(field);
     }
+    row.append(el('span', 'range-total muted'));
     const remove = el('button', 'button secondary small', 'Remover');
     remove.type = 'button';
     remove.setAttribute('aria-label', `Remover faixa ${index + 1}`);
@@ -45,6 +67,7 @@ function renderRangeRows(ranges) {
     row.append(remove);
     host.append(row);
   });
+  updateRangeTotals();
 }
 
 const currentRanges = () => [...$('range-rows').children].map(row =>
@@ -97,7 +120,7 @@ export async function initTools(refresh) {
         `${result.read} ${result.read === 1 ? 'registro lido' : 'registros lidos'}; ` +
         `${result.changed} ${result.changed === 1 ? 'criado ou atualizado' : 'criados ou atualizados'}.`);
       form.reset();
-      await refresh();
+      await Promise.all([refresh(), refreshLetterCounts()]);
     } catch (err) {
       toolStatus('participants-import-status', err.message, true);
     } finally {
@@ -128,6 +151,32 @@ export async function initTools(refresh) {
     renderRangeRows([...ranges, {from: '', to: '', guiche: ''}]);
   });
 
+  $('balance-pending').addEventListener('change', updateRangeTotals);
+
+  $('balance-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('button');
+    button.disabled = true;
+    toolStatus('ranges-status', 'Calculando...');
+    try {
+      const result = await api('/api/guiches/balance', {
+        count: $('balance-count').value, pending_only: pendingOnly(),
+        ranges: currentRanges(), priority_guiche: $('priority-guiche').value,
+      });
+      renderRangeRows(result.ranges);
+      const totals = result.ranges.map(range => range.total);
+      const [low, high] = [Math.min(...totals), Math.max(...totals)];
+      toolStatus('ranges-status', (low === high
+        ? `Proposta: ${low} ${low === 1 ? 'pessoa' : 'pessoas'} por guichê.`
+        : `Proposta: de ${low} a ${high} pessoas por guichê.`) +
+        ' Nada mudou ainda: revise as faixas e clique em "Salvar guichês" para aplicar.');
+    } catch (err) {
+      toolStatus('ranges-status', err.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   $('save-ranges').addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;
@@ -140,7 +189,7 @@ export async function initTools(refresh) {
         ? `${result.updated} ${result.updated === 1 ? 'participante mudou' : 'participantes mudaram'} de guichê.`
         : 'Nenhum participante precisou mudar de guichê.';
       toolStatus('ranges-status', 'Guichês salvos. ' + moved);
-      await Promise.all([renderTeamNav(), refresh()]);
+      await Promise.all([renderTeamNav(), refresh(), loadRanges()]);
     } catch (err) {
       toolStatus('ranges-status', err.message, true);
     } finally {
@@ -148,10 +197,26 @@ export async function initTools(refresh) {
     }
   });
 
+  await loadRanges();
+}
+
+// Após importar, atualiza só os totais, sem descartar faixas em edição.
+async function refreshLetterCounts() {
+  try {
+    letterCounts = (await api('/api/guiches/config')).letter_counts;
+    updateRangeTotals();
+  } catch {
+    // Os totais voltam na próxima leitura da configuração.
+  }
+}
+
+async function loadRanges() {
   try {
     const config = await api('/api/guiches/config');
+    letterCounts = config.letter_counts;
     renderRangeRows(config.ranges);
     $('priority-guiche').value = config.priority_guiche;
+    $('balance-count').value ||= new Set(config.ranges.map(range => range.guiche)).size;
   } catch (err) {
     toolStatus('ranges-status', err.message, true);
   }
