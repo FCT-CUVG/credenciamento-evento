@@ -238,7 +238,17 @@ body[data-page="public"] .field input, body[data-page="public"] .field input::pl
 .dashboard-tool-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .dashboard-tool-actions .button { flex: 1; min-width: 150px; }
 .range-rows { display: grid; gap: 8px; max-height: 290px; overflow-y: auto; padding-right: 3px; }
-.range-row { display: grid; grid-template-columns: minmax(55px, .55fr) minmax(55px, .55fr) minmax(80px, 1fr) auto; gap: 8px; align-items: end; }
+.range-row { display: grid; grid-template-columns: minmax(55px, .55fr) minmax(55px, .55fr) minmax(80px, 1fr) minmax(88px, auto) auto; gap: 8px; align-items: end; }
+.range-total { display: flex; align-items: center; min-height: 46px; font-size: .88rem; font-weight: 700; white-space: nowrap; }
+.balance-form { display: grid; gap: 10px; padding: 14px; border: 1px solid #e0e4ed; border-radius: 6px; background: #f7f8fa; }
+.balance-form h3 { margin: 0; color: var(--navy); font-size: 1rem; }
+.balance-form p { font-size: .9rem; }
+.balance-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 16px; }
+.balance-fields .field { width: 150px; font-size: .9rem; }
+.balance-fields .field input { min-height: 46px; padding: 8px 10px; font-size: 1rem; }
+.balance-fields .button { min-height: 46px; }
+.checkbox-field { display: flex; align-items: center; gap: 8px; min-height: 46px; font-size: .9rem; font-weight: 600; cursor: pointer; }
+.checkbox-field input { width: 18px; height: 18px; margin: 0; }
 .range-row .field { min-width: 0; font-size: .8rem; }
 .range-row .field input { min-height: 46px; padding: 8px 10px; font-size: 1rem; }
 .range-row .button { min-height: 46px; padding: 8px 12px; }
@@ -358,7 +368,8 @@ dialog .actions .button { flex: 1; }
   .status-legend-flow li:nth-child(4)::before { display: none; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .range-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .range-row .button { grid-column: 1 / -1; }
+  .range-row .range-total { grid-column: 1 / 2; }
+  .range-row .button { grid-column: 2 / -1; }
   .summary-stats { grid-template-columns: 1fr; }
   .summary-stat { min-height: 190px; border-right: 0; border-bottom: 1px solid #dce1e8; }
   .summary-stat strong { font-size: clamp(8rem, 30vw, 17rem); }

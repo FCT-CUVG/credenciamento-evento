@@ -118,6 +118,75 @@ def save_ranges(ranges, priority=None, actor="system"):
     return normalized, priority, changed
 
 
+LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def letter_counts(db, priority_desk=None, pending_only=False):
+    """Pessoas por inicial entre as que seguem as faixas: fora do guichê de prioridade e sem
+    guichê manual. Com pending_only, conta só quem ainda não retirou o kit."""
+    desk = priority_guiche() if priority_desk is None else priority_desk
+    counts = dict.fromkeys(LETTERS, 0)
+    for row in db.execute("SELECT name, priority, status FROM participants WHERE guiche_manual=0").fetchall():
+        if (row["priority"] and desk) or (pending_only and row["status"] == "completed"):
+            continue
+        initial = normalize(row["name"])[:1].upper()
+        if initial in counts:
+            counts[initial] += 1
+    return counts
+
+
+def balanced_ranges(counts, names):
+    """Divide A–Z em len(names) faixas contíguas com totais de pessoas o mais parecidos possível.
+
+    Primeiro acha o menor total possível para o guichê mais cheio; depois, entre as divisões
+    que respeitam esse teto, escolhe a de menor soma dos quadrados (totais mais uniformes) e,
+    no empate, a de faixas de letras mais parecidas. Uma letra nunca é dividida entre guichês."""
+    size, parts = len(LETTERS), len(names)
+    if not 1 <= parts <= size:
+        raise ValueError(f"Informe entre 1 e {size} guichês.")
+    prefix = [0]
+    for letter in LETTERS:
+        prefix.append(prefix[-1] + counts.get(letter, 0))
+    total = lambda start, end: prefix[end] - prefix[start]
+    inf = float("inf")
+    # peak[j][i]: menor máximo ao dividir as i primeiras letras em j faixas não vazias.
+    peak = [[inf] * (size + 1) for _ in range(parts + 1)]
+    peak[0][0] = 0
+    for j in range(1, parts + 1):
+        for i in range(j, size + 1):
+            peak[j][i] = min(max(peak[j - 1][p], total(p, i)) for p in range(j - 1, i))
+    ceiling = peak[parts][size]
+    best = [[None] * (size + 1) for _ in range(parts + 1)]
+    best[0][0] = ((0, 0), None)
+    for j in range(1, parts + 1):
+        for i in range(j, size + 1):
+            options = [((best[j - 1][p][0][0] + total(p, i) ** 2, best[j - 1][p][0][1] + (i - p) ** 2), p)
+                       for p in range(j - 1, i) if best[j - 1][p] and total(p, i) <= ceiling]
+            best[j][i] = min(options) if options else None
+    cuts, end = [], size
+    for j in range(parts, 0, -1):
+        start = best[j][end][1]
+        cuts.append((start, end))
+        end = start
+    return [{"from": LETTERS[start], "to": LETTERS[end - 1], "guiche": name, "total": total(start, end)}
+            for name, (start, end) in zip(names, reversed(cuts))]
+
+
+def balanced_desk_names(count, ranges, priority_desk):
+    """Reaproveita os nomes atuais (na ordem das faixas) e completa com números livres."""
+    names = []
+    for item in ranges:
+        desk = str(item.get("guiche", "")).strip() if isinstance(item, dict) else ""
+        if desk and desk != priority_desk and desk not in names:
+            names.append(desk)
+    number = 1
+    while len(names) < count:
+        if str(number) not in names and str(number) != priority_desk:
+            names.append(str(number))
+        number += 1
+    return names[:count]
+
+
 def desk_renames(old_ranges, old_priority, new_ranges, new_priority):
     """Desks whose letter range (or priority role) stayed the same but got a new name."""
     new_names = {r["guiche"] for r in new_ranges} | ({new_priority} if new_priority else set())

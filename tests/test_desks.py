@@ -157,6 +157,59 @@ class DesksTest(CredenciamentoTestCase):
                          ("P", "P", "7", "P"))
         self.assertNotIn("Prioridade", [d["id"] for d in self.request("/api/guiches", cookie=self.login("admin")[0])[1]["guiches"]])
 
+    def test_balanced_ranges_split_people_evenly_without_splitting_letters(self):
+        counts = dict.fromkeys(desks.LETTERS, 0)
+        counts.update(A=20, B=5, C=15, M=30, S=10, T=20)
+        ranges = desks.balanced_ranges(counts, ["1", "2", "3"])
+        self.assertEqual([(r["from"], r["to"], r["total"]) for r in ranges],
+                         [("A", "H", 40), ("I", "Q", 30), ("R", "Z", 30)])
+        self.assertEqual(desks.validate_ranges(ranges), [{k: r[k] for k in ("from", "to", "guiche")} for r in ranges])
+        # Uma letra nunca é dividida: com 26 guichês, cada um fica com uma letra.
+        self.assertEqual([r["from"] + r["to"] for r in desks.balanced_ranges(counts, [str(i) for i in range(26)])],
+                         [letter * 2 for letter in desks.LETTERS])
+        # Sem inscritos, as letras são divididas igualmente.
+        empty = desks.balanced_ranges(dict.fromkeys(desks.LETTERS, 0), ["1", "2"])
+        self.assertEqual([(r["from"], r["to"]) for r in empty], [("A", "M"), ("N", "Z")])
+        with self.assertRaises(ValueError):
+            desks.balanced_ranges(counts, [])
+        self.assertEqual(desks.balanced_desk_names(4, [{"guiche": "B"}, {"guiche": "A"}, {"guiche": "B"}], "P"),
+                         ["B", "A", "1", "2"])
+        self.assertEqual(desks.balanced_desk_names(2, [{"guiche": "1"}, {"guiche": "2"}, {"guiche": "3"}], "1"),
+                         ["2", "3"])
+
+    def test_admin_balances_desks_by_registered_people(self):
+        people = [{"nome": f"{initial} Pessoa {index}", "email": f"{initial.lower()}{index}@example.org",
+                   "afiliacao": "X", "pago": 1}
+                  for initial, amount in (("Carlos", 3), ("Maria", 5), ("Tiago", 2)) for index in range(amount)]
+        people += [{"nome": "Zeca Prioridade", "email": "zeca@example.org", "afiliacao": "Z", "pago": 1, "prioridade": 1},
+                   {"nome": "Zilda Manual", "email": "zilda@example.org", "afiliacao": "Z", "pago": 1, "guiche": "9"}]
+        csv_io.import_text(json.dumps(people), ".json")
+        with database.connect() as db:
+            db.execute("UPDATE participants SET status='completed' WHERE email LIKE 'maria%' AND email < 'maria3'")
+        admin = self.login("admin")
+        config = self.request("/api/guiches/config", cookie=admin[0])[1]
+        # Ana e Bruno vêm da base dos testes; prioridade e guichê manual não contam.
+        self.assertEqual({k: v for k, v in config["letter_counts"]["all"].items() if v},
+                         {"A": 1, "B": 1, "C": 3, "M": 5, "T": 2})
+        self.assertEqual(config["letter_counts"]["pending"]["M"], 2)
+        self.assertEqual(self.request("/api/guiches/balance", {"count": 2}, *self.login("vol1"))[0], 403)
+        for count in ("", "0", "27", "dois"):
+            self.assertEqual(self.request("/api/guiches/balance", {"count": count}, *admin)[0], 400)
+        code, proposal, _ = self.request("/api/guiches/balance", {"count": 2}, *admin)
+        self.assertEqual(code, 200)
+        self.assertEqual([(r["from"], r["to"], r["guiche"], r["total"]) for r in proposal["ranges"]],
+                         [("A", "L", "1", 5), ("M", "Z", "2", 7)])
+        code, proposal, _ = self.request("/api/guiches/balance", {"count": 2, "pending_only": True}, *admin)
+        self.assertEqual([r["total"] for r in proposal["ranges"]], [5, 4])
+        # A proposta não altera nada até ser salva.
+        self.assertEqual(self.request("/api/guiches/config", cookie=admin[0])[1]["ranges"], config["ranges"])
+        code, saved, _ = self.request("/api/guiches/config", {"ranges": proposal["ranges"], "priority_guiche": "P"}, *admin)
+        self.assertEqual((code, saved["ranges"][0]), (200, {"from": "A", "to": "L", "guiche": "1"}))
+        with database.connect() as db:
+            placed = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+        self.assertEqual((placed["carlos0@example.org"], placed["maria4@example.org"], placed["maria0@example.org"],
+                          placed["zeca@example.org"], placed["zilda@example.org"]), ("1", "2", "3", "P", "9"))
+
 
 if __name__ == "__main__":
     unittest.main()
