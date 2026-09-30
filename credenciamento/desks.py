@@ -121,13 +121,13 @@ def save_ranges(ranges, priority=None, actor="system"):
 LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-def letter_counts(db, priority_desk=None, pending_only=False):
+def letter_counts(db, priority_desk=None):
     """Pessoas por inicial entre as que seguem as faixas: fora do guichê de prioridade e sem
-    guichê manual. Com pending_only, conta só quem ainda não retirou o kit."""
+    guichê manual."""
     desk = priority_guiche() if priority_desk is None else priority_desk
     counts = dict.fromkeys(LETTERS, 0)
-    for row in db.execute("SELECT name, priority, status FROM participants WHERE guiche_manual=0").fetchall():
-        if (row["priority"] and desk) or (pending_only and row["status"] == "completed"):
+    for row in db.execute("SELECT name, priority FROM participants WHERE guiche_manual=0").fetchall():
+        if row["priority"] and desk:
             continue
         initial = normalize(row["name"])[:1].upper()
         if initial in counts:

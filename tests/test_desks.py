@@ -185,13 +185,13 @@ class DesksTest(CredenciamentoTestCase):
                    {"nome": "Zilda Manual", "email": "zilda@example.org", "afiliacao": "Z", "pago": 1, "guiche": "9"}]
         csv_io.import_text(json.dumps(people), ".json")
         with database.connect() as db:
+            # Quem já retirou o kit conta na divisão, mas não muda de guichê ao salvar.
             db.execute("UPDATE participants SET status='completed' WHERE email LIKE 'maria%' AND email < 'maria3'")
         admin = self.login("admin")
         config = self.request("/api/guiches/config", cookie=admin[0])[1]
         # Ana e Bruno vêm da base dos testes; prioridade e guichê manual não contam.
-        self.assertEqual({k: v for k, v in config["letter_counts"]["all"].items() if v},
+        self.assertEqual({k: v for k, v in config["letter_counts"].items() if v},
                          {"A": 1, "B": 1, "C": 3, "M": 5, "T": 2})
-        self.assertEqual(config["letter_counts"]["pending"]["M"], 2)
         self.assertEqual(self.request("/api/guiches/balance", {"count": 2}, *self.login("vol1"))[0], 403)
         for count in ("", "0", "27", "dois"):
             self.assertEqual(self.request("/api/guiches/balance", {"count": count}, *admin)[0], 400)
@@ -199,8 +199,6 @@ class DesksTest(CredenciamentoTestCase):
         self.assertEqual(code, 200)
         self.assertEqual([(r["from"], r["to"], r["guiche"], r["total"]) for r in proposal["ranges"]],
                          [("A", "L", "1", 5), ("M", "Z", "2", 7)])
-        code, proposal, _ = self.request("/api/guiches/balance", {"count": 2, "pending_only": True}, *admin)
-        self.assertEqual([r["total"] for r in proposal["ranges"]], [5, 4])
         # A proposta não altera nada até ser salva.
         self.assertEqual(self.request("/api/guiches/config", cookie=admin[0])[1]["ranges"], config["ranges"])
         code, saved, _ = self.request("/api/guiches/config", {"ranges": proposal["ranges"], "priority_guiche": "P"}, *admin)

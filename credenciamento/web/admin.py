@@ -66,7 +66,7 @@ def desk_config(req, user, data):
     except ValueError as exc:
         return req.respond(500, {"error": str(exc)})
     with connect() as db:
-        counts = {"all": letter_counts(db, priority), "pending": letter_counts(db, priority, pending_only=True)}
+        counts = letter_counts(db, priority)
     return req.respond(200, {"ranges": ranges, "priority_guiche": priority, "letter_counts": counts})
 
 
@@ -173,7 +173,7 @@ def balance_desks(req, user, data):
         priority = validate_priority_guiche(data.get("priority_guiche", priority_guiche()))
         names = balanced_desk_names(int(count), current or configured_ranges(), priority)
         with connect() as db:
-            counts = letter_counts(db, priority, pending_only=bool(data.get("pending_only")))
+            counts = letter_counts(db, priority)
         ranges = balanced_ranges(counts, names)
     except ValueError as exc:
         return req.respond(400, {"error": str(exc)})
