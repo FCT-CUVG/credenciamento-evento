@@ -178,13 +178,20 @@ def mask_public_text(value):
     return re.sub(r"[^\W_]+", mask_word, value or "", flags=re.UNICODE)
 
 
-def guiche_for(name):
-    initial = normalize(name)[:1].upper()
+def read_desk_file():
+    """Parsed guichês.json; callers that loop should read it once and pass the result along."""
     try:
         config = json.loads(RANGES.read_text(encoding="utf-8"))
-        ranges = config["ranges"]
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError) as exc:
         raise ValueError(f"Configuração de guichês inválida: {RANGES}") from exc
+    if not isinstance(config, dict) or not isinstance(config.get("ranges"), list):
+        raise ValueError(f"Configuração de guichês inválida: {RANGES}")
+    return config
+
+
+def guiche_for(name, ranges=None):
+    initial = normalize(name)[:1].upper()
+    ranges = configured_ranges() if ranges is None else ranges
     matches = [str(r["guiche"]).strip() for r in ranges
                if str(r["from"]).upper() <= initial <= str(r["to"]).upper()]
     if len(matches) != 1 or not matches[0]:
@@ -193,13 +200,7 @@ def guiche_for(name):
 
 
 def configured_ranges():
-    try:
-        ranges = json.loads(RANGES.read_text(encoding="utf-8"))["ranges"]
-    except (OSError, ValueError, KeyError) as exc:
-        raise ValueError("Não foi possível ler a configuração dos guichês.") from exc
-    if not isinstance(ranges, list):
-        raise ValueError("Configuração de guichês inválida.")
-    return ranges
+    return read_desk_file()["ranges"]
 
 
 DEFAULT_PRIORITY_GUICHE = "P"
@@ -208,11 +209,10 @@ DEFAULT_PRIORITY_GUICHE = "P"
 def priority_guiche():
     """Desk for participants marked as priority; an empty value turns it off."""
     try:
-        config = json.loads(RANGES.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        config = read_desk_file()
+    except ValueError:
         return DEFAULT_PRIORITY_GUICHE
-    value = config.get("priority_guiche", DEFAULT_PRIORITY_GUICHE) if isinstance(config, dict) else ""
-    value = str(value or "").strip()
+    value = str(config.get("priority_guiche", DEFAULT_PRIORITY_GUICHE) or "").strip()
     return value if re.fullmatch(r"[A-Za-z0-9_-]{1,24}", value) else ""
 
 
@@ -223,10 +223,10 @@ def validate_priority_guiche(value):
     return value
 
 
-def auto_guiche(name, priority, priority_desk=None):
+def auto_guiche(name, priority, priority_desk=None, ranges=None):
     """Desk computed from priority and name initial, without explicit assignment."""
     desk = priority_guiche() if priority_desk is None else priority_desk
-    return desk if priority and desk else guiche_for(name)
+    return desk if priority and desk else guiche_for(name, ranges)
 
 
 def desk_ranges(guiche):
@@ -316,9 +316,7 @@ def reconcile_priority_desk(db, ranges, priority_desk, actor):
         if not all(row["priority"] for row in rows):
             continue
         for row in rows:
-            db.execute("UPDATE participants SET guiche=?,guiche_manual=0,updated_at=?,revision=revision+1 WHERE id=?",
-                       (priority_desk, now(), row["id"]))
-            record_event(db, db.execute("SELECT * FROM participants WHERE id=?", (row["id"],)).fetchone(), "guiche_rename", actor)
+            update_participant(db, row["id"], "guiche_rename", actor, guiche=priority_desk, guiche_manual=0)
             changed += 1
         db.execute("UPDATE users SET guiche=? WHERE guiche=?", (priority_desk, desk))
     return changed
@@ -332,9 +330,8 @@ def apply_desk_config(old_ranges, old_priority, new_ranges, new_priority, actor)
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         for old, new in renames.items():
-            for row in db.execute("SELECT * FROM participants WHERE guiche=?", (old,)).fetchall():
-                db.execute("UPDATE participants SET guiche=?,updated_at=?,revision=revision+1 WHERE id=?", (new, now(), row["id"]))
-                record_event(db, db.execute("SELECT * FROM participants WHERE id=?", (row["id"],)).fetchone(), "guiche_rename", actor)
+            for row in db.execute("SELECT id FROM participants WHERE guiche=?", (old,)).fetchall():
+                update_participant(db, row["id"], "guiche_rename", actor, guiche=new)
                 changed += 1
             db.execute("UPDATE users SET guiche=? WHERE guiche=?", (new, old))
         changed += reconcile_priority_desk(db, new_ranges, new_priority, actor)
@@ -344,12 +341,11 @@ def apply_desk_config(old_ranges, old_priority, new_ranges, new_priority, actor)
             if row["guiche_manual"] and not (row["priority"] and new_priority):
                 continue
             try:
-                guiche = auto_guiche(row["name"], row["priority"], new_priority)
+                guiche = auto_guiche(row["name"], row["priority"], new_priority, new_ranges)
             except ValueError:
                 continue
             if guiche != row["guiche"]:
-                db.execute("UPDATE participants SET guiche=?,updated_at=?,revision=revision+1 WHERE id=?", (guiche, now(), row["id"]))
-                record_event(db, db.execute("SELECT * FROM participants WHERE id=?", (row["id"],)).fetchone(), "guiche_reassign", actor)
+                update_participant(db, row["id"], "guiche_reassign", actor, guiche=guiche)
                 changed += 1
         db.commit()
     if changed:
@@ -359,10 +355,7 @@ def apply_desk_config(old_ranges, old_priority, new_ranges, new_priority, actor)
 
 def available_guiches(db):
     """List configured desks, including desks assigned explicitly to participants or staff."""
-    try:
-        ranges = json.loads(RANGES.read_text(encoding="utf-8"))["ranges"]
-    except (OSError, ValueError, KeyError) as exc:
-        raise ValueError(f"Configuração de guichês inválida: {RANGES}") from exc
+    ranges = configured_ranges()
     desks = {}
     priority = priority_guiche()
     if priority:
@@ -447,9 +440,13 @@ def init_db():
                 db.execute(f"ALTER TABLE participants ADD COLUMN {name} {definition}")
         if "guiche_manual" not in columns:
             # Existing desks that differ from the automatic rule were set explicitly on import.
+            try:
+                ranges, priority_desk = configured_ranges(), priority_guiche()
+            except ValueError:
+                ranges, priority_desk = [], ""
             for row in db.execute("SELECT id,name,priority,guiche FROM participants").fetchall():
                 try:
-                    manual = row["guiche"] != auto_guiche(row["name"], row["priority"])
+                    manual = row["guiche"] != auto_guiche(row["name"], row["priority"], priority_desk, ranges)
                 except ValueError:
                     manual = True
                 if manual:
@@ -470,8 +467,7 @@ def participant_dict(row, private=False):
     d["priority"] = bool(row["priority"])
     d["cpf_prefix"] = row["cpf"][:3]
     if private:
-        d.update(email=row["email"], cpf=row["cpf"], badge_name=row["badge_name"],
-                 paid=bool(row["paid"]), priority=bool(row["priority"]))
+        d.update(email=row["email"], cpf=row["cpf"], badge_name=row["badge_name"], paid=bool(row["paid"]))
     return d
 
 
@@ -493,6 +489,72 @@ def record_event(db, row, action, actor):
                (event["id"], json.dumps(payload, ensure_ascii=False)))
 
 
+FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def csv_safe(value):
+    """Keep spreadsheets from running cell content as a formula."""
+    return "'" + value if isinstance(value, str) and value.lstrip().startswith(FORMULA_PREFIXES) else value
+
+
+def get_participant(db, pid):
+    return db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
+
+
+def update_participant(db, pid, action, actor, **fields):
+    """Única forma de alterar um participante: grava os campos, atualiza updated_at e revision,
+    registra o evento (histórico e fila do Google Sheets) e devolve a linha atualizada."""
+    columns = "".join(f"{name}=?," for name in fields)
+    db.execute(f"UPDATE participants SET {columns}updated_at=?,revision=revision+1 WHERE id=?",
+               (*fields.values(), now(), pid))
+    row = get_participant(db, pid)
+    record_event(db, row, action, actor)
+    return row
+
+
+STATUS_STEPS = ("registered", "prechecked", "searching", "ready", "completed")
+STEP_TIMESTAMPS = {"prechecked": "prechecked_at", "searching": "claimed_at",
+                   "ready": "ready_at", "completed": "completed_at"}
+
+
+def status_fields(row, status, actor):
+    """Campos para levar alguém direto a uma etapa: preenche o que ficou para trás (mantendo
+    horários já registrados) e limpa as etapas seguintes."""
+    target, stamp = STATUS_STEPS.index(status), now()
+    fields = {"status": status}
+    for step, column in STEP_TIMESTAMPS.items():
+        fields[column] = (row[column] or stamp) if STATUS_STEPS.index(step) <= target else None
+    if status == "searching":
+        fields["claimed_by"] = actor
+    elif target > STATUS_STEPS.index("searching"):
+        fields["claimed_by"] = row["claimed_by"] or actor
+    else:
+        fields["claimed_by"] = None
+    return fields
+
+
+def queue_action_fields(action, user, row):
+    """Campos de uma ação da fila (busca e guichê), ou None se ela não vale para este usuário agora."""
+    role, username, stamp = user["role"], user["username"], now()
+    staff = role in ("volunteer", "admin")
+    owns_search = row["claimed_by"] == username or role == "admin"
+    at_desk = staff or (role == "attendant" and user["guiche"] == row["guiche"])
+    clear = not pending_reasons(row)
+    if action == "claim" and staff and row["status"] == "prechecked" and clear:
+        return {"status": "searching", "claimed_by": username, "claimed_at": stamp}
+    if action == "ready" and staff and row["status"] == "searching" and clear and owns_search:
+        return {"status": "ready", "ready_at": stamp}
+    if action == "release" and staff and row["status"] == "searching" and owns_search:
+        return {"status": "prechecked", "claimed_by": None, "claimed_at": None}
+    if action == "complete" and at_desk and row["status"] == "ready" and clear:
+        return {"status": "completed", "completed_at": stamp}
+    if action == "undo_ready" and at_desk and row["status"] == "ready":
+        return {"status": "searching" if row["claimed_by"] else "prechecked", "ready_at": None}
+    if action == "undo_complete" and at_desk and row["status"] == "completed":
+        return {"status": "ready", "completed_at": None}
+    return None
+
+
 def export_csv():
     """The local CSV is a restart-rebuilt mirror; SQLite remains the source of truth."""
     with CSV_LOCK, connect() as db:
@@ -505,12 +567,7 @@ def export_csv():
             writer = csv.DictWriter(f, fieldnames=fields)
             writer.writeheader()
             for row in rows:
-                values = {key: row[key] for key in fields}
-                for key in ("name", "badge_name", "email", "cpf", "affiliation", "guiche", "claimed_by"):
-                    value = values[key]
-                    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
-                        values[key] = "'" + value
-                writer.writerow(values)
+                writer.writerow({key: csv_safe(row[key]) for key in fields})
             f.flush()
             os.fsync(f.fileno())
         os.chmod(temp, 0o600)
@@ -541,10 +598,7 @@ def participants_download():
                   "pre_checkin_em": row["prechecked_at"], "busca_iniciada_em": row["claimed_at"],
                   "pronto_em": row["ready_at"], "retirado_em": row["completed_at"],
                   "atualizado_em": row["updated_at"], "revisao": row["revision"]}
-        for key, value in values.items():
-            if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
-                values[key] = "'" + value
-        writer.writerow(values)
+        writer.writerow({key: csv_safe(value) for key, value in values.items()})
     return b"\xef\xbb\xbf" + output.getvalue().encode("utf-8")
 
 
@@ -571,11 +625,7 @@ def event_logs_download():
     writer = csv.DictWriter(output, fieldnames=EVENT_LOG_COLUMNS)
     writer.writeheader()
     for row in rows:
-        values = {key: row[key] or "" for key in EVENT_LOG_COLUMNS}
-        for key, value in values.items():
-            if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
-                values[key] = "'" + value
-        writer.writerow(values)
+        writer.writerow({key: csv_safe(row[key] or "") for key in EVENT_LOG_COLUMNS})
     return b"\xef\xbb\xbf" + output.getvalue().encode("utf-8")
 
 
@@ -886,16 +936,13 @@ class App(BaseHTTPRequestHandler):
                 if not token_row:
                     return self.respond(400, {"error": "Consulta expirada. Tente novamente."})
                 db.execute("DELETE FROM lookup_tokens WHERE token_hash=?", (token_hash,))
-                row = db.execute("SELECT * FROM participants WHERE id=?", (token_row["participant_id"],)).fetchone()
+                row = get_participant(db, token_row["participant_id"])
                 if not row:
                     return self.respond(404, {"error": "Inscrição não encontrada."})
                 needs_guidance = bool(pending_reasons(row))
                 if row["status"] == "registered":
-                    t = now()
-                    db.execute("UPDATE participants SET status='prechecked',prechecked_at=?,updated_at=?,revision=revision+1 WHERE id=?",
-                               (t, t, row["id"]))
-                    row = db.execute("SELECT * FROM participants WHERE id=?", (row["id"],)).fetchone()
-                    record_event(db, row, "precheck_pending" if needs_guidance else "precheck", "participant")
+                    row = update_participant(db, row["id"], "precheck_pending" if needs_guidance else "precheck",
+                                             "participant", status="prechecked", prechecked_at=now())
                     db.commit()
                     export_csv()
             result = {"ok": True, "name": mask_public_text(row["name"]), "needs_guidance": needs_guidance}
@@ -945,14 +992,12 @@ class App(BaseHTTPRequestHandler):
                 return self.respond(400, {"error": "Pagamento inválido."})
             with connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
+                row = get_participant(db, pid)
                 if not row:
                     return self.respond(404, {"error": "Participante não encontrado."})
                 if row["paid"] != int(paid):
-                    db.execute("UPDATE participants SET paid=?,updated_at=?,revision=revision+1 WHERE id=?",
-                               (int(paid), now(), pid))
-                    row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
-                    record_event(db, row, "payment_paid" if row["paid"] else "payment_unpaid", user["username"])
+                    row = update_participant(db, pid, "payment_paid" if int(paid) else "payment_unpaid",
+                                             user["username"], paid=int(paid))
                     db.commit()
                     export_csv()
             return self.respond(200, {"item": participant_dict(row, private=True)})
@@ -965,7 +1010,7 @@ class App(BaseHTTPRequestHandler):
             priority = int(priority)
             with connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
+                row = get_participant(db, pid)
                 if not row:
                     return self.respond(404, {"error": "Participante não encontrado."})
                 desk, guiche = priority_guiche(), row["guiche"]
@@ -980,10 +1025,8 @@ class App(BaseHTTPRequestHandler):
                     return self.respond(409, {"error": "Não é possível mudar o guichê: a busca ou a retirada do kit já começou."})
                 if row["priority"] != priority or row["guiche"] != guiche:
                     manual = 0 if priority and desk else row["guiche_manual"] if guiche == row["guiche"] else 0
-                    db.execute("UPDATE participants SET priority=?,guiche=?,guiche_manual=?,updated_at=?,revision=revision+1 WHERE id=?",
-                               (priority, guiche, manual, now(), pid))
-                    row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
-                    record_event(db, row, "priority_on" if priority else "priority_off", user["username"])
+                    row = update_participant(db, pid, "priority_on" if priority else "priority_off", user["username"],
+                                             priority=priority, guiche=guiche, guiche_manual=manual)
                     db.commit()
                     export_csv()
             return self.respond(200, {"item": participant_dict(row, private=True)})
@@ -995,14 +1038,11 @@ class App(BaseHTTPRequestHandler):
                 return self.respond(400, {"error": "Informe a afiliação com até 200 caracteres."})
             with connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
+                row = get_participant(db, pid)
                 if not row:
                     return self.respond(404, {"error": "Participante não encontrado."})
                 if row["affiliation"] != affiliation:
-                    db.execute("UPDATE participants SET affiliation=?,updated_at=?,revision=revision+1 WHERE id=?",
-                               (affiliation, now(), pid))
-                    row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
-                    record_event(db, row, "affiliation_update", user["username"])
+                    row = update_participant(db, pid, "affiliation_update", user["username"], affiliation=affiliation)
                     db.commit()
                     export_csv()
             return self.respond(200, {"item": participant_dict(row, private=True)})
@@ -1018,28 +1058,17 @@ class App(BaseHTTPRequestHandler):
             if user["role"] != "admin":
                 return self.respond(403, {"error": "Somente a coordenação pode alterar a situação."})
             pid, status = str(data.get("id", "")), str(data.get("status", ""))
-            if status not in ("registered", "prechecked", "searching", "ready", "completed"):
+            if status not in STATUS_STEPS:
                 return self.respond(400, {"error": "Situação inválida."})
             with connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
+                row = get_participant(db, pid)
                 if not row:
                     return self.respond(404, {"error": "Participante não encontrado."})
                 if status in ("searching", "ready", "completed") and pending_reasons(row):
                     return self.respond(409, {"error": "Há pagamento ou afiliação pendente. Resolva a pendência antes de avançar a situação."})
-                t = now()
-                if status == "registered":
-                    db.execute("UPDATE participants SET status=?,claimed_by=NULL,prechecked_at=NULL,claimed_at=NULL,ready_at=NULL,completed_at=NULL,updated_at=?,revision=revision+1 WHERE id=?", (status, t, pid))
-                elif status == "prechecked":
-                    db.execute("UPDATE participants SET status=?,claimed_by=NULL,prechecked_at=COALESCE(prechecked_at,?),claimed_at=NULL,ready_at=NULL,completed_at=NULL,updated_at=?,revision=revision+1 WHERE id=?", (status, t, t, pid))
-                elif status == "searching":
-                    db.execute("UPDATE participants SET status=?,claimed_by=?,prechecked_at=COALESCE(prechecked_at,?),claimed_at=COALESCE(claimed_at,?),ready_at=NULL,completed_at=NULL,updated_at=?,revision=revision+1 WHERE id=?", (status, user["username"], t, t, t, pid))
-                elif status == "ready":
-                    db.execute("UPDATE participants SET status=?,claimed_by=COALESCE(claimed_by,?),prechecked_at=COALESCE(prechecked_at,?),claimed_at=COALESCE(claimed_at,?),ready_at=COALESCE(ready_at,?),completed_at=NULL,updated_at=?,revision=revision+1 WHERE id=?", (status, user["username"], t, t, t, t, pid))
-                else:
-                    db.execute("UPDATE participants SET status=?,claimed_by=COALESCE(claimed_by,?),prechecked_at=COALESCE(prechecked_at,?),claimed_at=COALESCE(claimed_at,?),ready_at=COALESCE(ready_at,?),completed_at=COALESCE(completed_at,?),updated_at=?,revision=revision+1 WHERE id=?", (status, user["username"], t, t, t, t, t, pid))
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
-                record_event(db, row, "status_" + status, user["username"])
+                row = update_participant(db, pid, "status_" + status, user["username"],
+                                         **status_fields(row, status, user["username"]))
                 db.commit()
             export_csv()
             return self.respond(200, {"item": participant_dict(row)})
@@ -1050,28 +1079,13 @@ class App(BaseHTTPRequestHandler):
             pid = str(data.get("id", ""))
             with connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
+                row = get_participant(db, pid)
                 if not row:
                     return self.respond(404, {"error": "Participante não encontrado."})
-                t = now()
-                if action == "claim" and user["role"] in ("volunteer", "admin") and row["status"] == "prechecked" and not pending_reasons(row):
-                    db.execute("UPDATE participants SET status='searching',claimed_by=?,claimed_at=?,updated_at=?,revision=revision+1 WHERE id=?",
-                               (user["username"], t, t, pid))
-                elif action == "ready" and user["role"] in ("volunteer", "admin") and row["status"] == "searching" and not pending_reasons(row) and (row["claimed_by"] == user["username"] or user["role"] == "admin"):
-                    db.execute("UPDATE participants SET status='ready',ready_at=?,updated_at=?,revision=revision+1 WHERE id=?", (t, t, pid))
-                elif action == "release" and user["role"] in ("volunteer", "admin") and row["status"] == "searching" and (row["claimed_by"] == user["username"] or user["role"] == "admin"):
-                    db.execute("UPDATE participants SET status='prechecked',claimed_by=NULL,claimed_at=NULL,updated_at=?,revision=revision+1 WHERE id=?", (t, pid))
-                elif action == "complete" and row["status"] == "ready" and not pending_reasons(row) and (user["role"] in ("volunteer", "admin") or (user["role"] == "attendant" and user["guiche"] == row["guiche"])):
-                    db.execute("UPDATE participants SET status='completed',completed_at=?,updated_at=?,revision=revision+1 WHERE id=?", (t, t, pid))
-                elif action == "undo_ready" and row["status"] == "ready" and (user["role"] in ("volunteer", "admin") or (user["role"] == "attendant" and user["guiche"] == row["guiche"])):
-                    previous = "searching" if row["claimed_by"] else "prechecked"
-                    db.execute("UPDATE participants SET status=?,ready_at=NULL,updated_at=?,revision=revision+1 WHERE id=?", (previous, t, pid))
-                elif action == "undo_complete" and row["status"] == "completed" and (user["role"] in ("volunteer", "admin") or (user["role"] == "attendant" and user["guiche"] == row["guiche"])):
-                    db.execute("UPDATE participants SET status='ready',completed_at=NULL,updated_at=?,revision=revision+1 WHERE id=?", (t, pid))
-                else:
+                fields = queue_action_fields(action, user, row)
+                if fields is None:
                     return self.respond(409, {"error": "Esta ação não é permitida no estado atual. Atualize a fila."})
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
-                record_event(db, row, action, user["username"])
+                row = update_participant(db, pid, action, user["username"], **fields)
                 db.commit()
             export_csv()
             return self.respond(200, {"item": participant_dict(row)})
@@ -1144,6 +1158,10 @@ def import_text(content, suffix, actor="system"):
     prepared = []
     seen, seen_ids = set(), set()
     priority_desk = priority_guiche()
+    try:
+        ranges = configured_ranges()
+    except ValueError:
+        ranges = []
     for n, item in enumerate(records, 1):
         if not isinstance(item, dict):
             raise ValueError(f"Linha {n}: registro inválido.")
@@ -1152,7 +1170,7 @@ def import_text(content, suffix, actor="system"):
             if raw is None:
                 return ""
             raw = str(raw).strip()
-            return raw[1:] if raw.startswith("'") and raw[1:].lstrip().startswith(("=", "+", "-", "@")) else raw
+            return raw[1:] if raw.startswith("'") and raw[1:].lstrip().startswith(FORMULA_PREFIXES) else raw
 
         pid = value("id")
         if pid:
@@ -1185,7 +1203,7 @@ def import_text(content, suffix, actor="system"):
             guiche, manual = priority_desk, 0
         else:
             try:
-                automatic = guiche_for(name)
+                automatic = guiche_for(name, ranges)
             except ValueError:
                 if not explicit:
                     raise
@@ -1203,7 +1221,7 @@ def import_text(content, suffix, actor="system"):
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         for pid, name, badge_name, name_key, email, email_key, cpf, affiliation, paid, priority, guiche, manual in prepared:
-            old_by_id = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone() if pid else None
+            old_by_id = get_participant(db, pid) if pid else None
             old_by_key = db.execute("SELECT * FROM participants WHERE name_key=? AND email_key=?",
                                     (name_key, email_key)).fetchone()
             if old_by_id and old_by_key and old_by_id["id"] != old_by_key["id"]:
@@ -1216,10 +1234,9 @@ def import_text(content, suffix, actor="system"):
                                                   ("priority", priority), ("guiche", guiche))):
                     if old["guiche"] != guiche and old["status"] in ("searching", "ready", "completed"):
                         raise ValueError(f"Não é possível mudar o guichê de {name}: busca ou retirada já iniciada.")
-                    db.execute("UPDATE participants SET name=?,name_key=?,badge_name=?,email=?,email_key=?,cpf=?,affiliation=?,paid=?,priority=?,guiche=?,updated_at=?,revision=revision+1 WHERE id=?",
-                               (name, name_key, badge_name, email, email_key, cpf, affiliation, paid, priority, guiche, now(), old["id"]))
-                    row = db.execute("SELECT * FROM participants WHERE id=?", (old["id"],)).fetchone()
-                    record_event(db, row, "import_update", actor)
+                    update_participant(db, old["id"], "import_update", actor, name=name, name_key=name_key,
+                                       badge_name=badge_name, email=email, email_key=email_key, cpf=cpf,
+                                       affiliation=affiliation, paid=paid, priority=priority, guiche=guiche)
                     count += 1
                 if old["guiche_manual"] != manual:
                     db.execute("UPDATE participants SET guiche_manual=? WHERE id=?", (manual, old["id"]))
@@ -1227,8 +1244,7 @@ def import_text(content, suffix, actor="system"):
                 pid = pid or str(uuid.uuid4())
                 db.execute("INSERT INTO participants(id,name,badge_name,name_key,email,email_key,cpf,affiliation,paid,priority,guiche,guiche_manual,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                            (pid, name, badge_name, name_key, email, email_key, cpf, affiliation, paid, priority, guiche, manual, now()))
-                row = db.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
-                record_event(db, row, "import", actor)
+                record_event(db, get_participant(db, pid), "import", actor)
                 count += 1
         db.commit()
     export_csv()

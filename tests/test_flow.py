@@ -677,6 +677,20 @@ class FlowTest(unittest.TestCase):
                          ("P", "P", "7", "P"))
         self.assertNotIn("Prioridade", [d["id"] for d in self.request("/api/guiches", cookie=self.login("admin")[0])[1]["guiches"]])
 
+    def test_status_fields_fill_previous_steps_and_clear_later_ones(self):
+        row = {"prechecked_at": "t-arrival", "claimed_at": None, "ready_at": "t-ready",
+               "completed_at": None, "claimed_by": "vol2"}
+        with patch.object(app, "now", return_value="agora"):
+            self.assertEqual(app.status_fields(row, "registered", "admin"),
+                             {"status": "registered", "prechecked_at": None, "claimed_at": None,
+                              "ready_at": None, "completed_at": None, "claimed_by": None})
+            self.assertEqual(app.status_fields(row, "searching", "admin"),
+                             {"status": "searching", "prechecked_at": "t-arrival", "claimed_at": "agora",
+                              "ready_at": None, "completed_at": None, "claimed_by": "admin"})
+            self.assertEqual(app.status_fields(row, "completed", "admin"),
+                             {"status": "completed", "prechecked_at": "t-arrival", "claimed_at": "agora",
+                              "ready_at": "t-ready", "completed_at": "agora", "claimed_by": "vol2"})
+
 
 if __name__ == "__main__":
     unittest.main()
