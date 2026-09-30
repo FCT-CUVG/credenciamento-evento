@@ -715,6 +715,21 @@ class FlowTest(unittest.TestCase):
                 elif "volunteer" not in route.roles:
                     self.assertEqual(self.request(target, cookie=volunteer[0])[0], 401)
 
+    def test_pages_load_existing_javascript_modules_only_from_static_js(self):
+        import re
+        for page in ("/", "/login", "/busca", "/fila", "/painel", "/painel/resumo"):
+            code, html, _ = self.request(page, json_response=False)
+            scripts = re.findall(rb'<script type="module" src="([^"]+)"', html)
+            self.assertEqual((code, len(scripts)), (200, 1), page)
+            code, body, headers = self.request(scripts[0].decode(), json_response=False)
+            self.assertEqual(code, 200)
+            self.assertTrue(headers["Content-Type"].startswith("text/javascript"))
+        code, body, _ = self.request("/js/dashboard/table.js", json_response=False)
+        self.assertEqual(code, 200)
+        for path in ("/js/../../app.py", "/js/%2e%2e/app.css", "/js/missing.js", "/app.js"):
+            handler_code = self.request(path, json_response=False)[0]
+            self.assertEqual(handler_code, 404, path)
+
 
 if __name__ == "__main__":
     unittest.main()

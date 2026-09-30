@@ -104,7 +104,13 @@ class App(BaseHTTPRequestHandler):
             routes = {"/": "index.html", "/busca": "busca.html", "/fila": "fila.html",
                       "/painel": "painel.html",
                       "/painel/resumo": "resumo.html", "/login": "login.html",
-                      "/app.css": "app.css", "/app.js": "app.js"}
+                      "/app.css": "app.css"}
+            # Módulos JavaScript: só arquivos .js que existem dentro de static/js.
+            scripts = settings.STATIC / "js"
+            if path.startswith("/js/") and path.endswith(".js"):
+                candidate = (settings.STATIC / path.lstrip("/")).resolve()
+                if candidate.is_file() and candidate.is_relative_to(scripts.resolve()):
+                    routes[path] = candidate.relative_to(settings.STATIC.resolve()).as_posix()
             filename = routes.get(path)
             if not filename:
                 return self.send_error(404)

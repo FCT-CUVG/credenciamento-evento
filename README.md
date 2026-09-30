@@ -90,3 +90,5 @@ Antes do uso real, teste o fluxo completo em vários celulares e guichês com um
 | `web/routes.py` | Tabela de rotas: cada rota declara método, caminho e papéis (`@route`) |
 | `web/public.py` / `staff.py` / `admin.py` | Rotas públicas, da equipe e da coordenação |
 | `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `sync`, `backup` |
+
+No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js` e `dashboard/tools.js` (painel detalhado) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.
