@@ -152,10 +152,9 @@
         <p>Distribua todas as letras de A a Z, sem sobreposição. Ao salvar, quem ainda não começou a busca do kit passa para o novo guichê. Renomear um guichê (mesma faixa, outro nome) atualiza todos os participantes e atendentes daquele guichê. Guichês informados na coluna <code>guiche</code> do CSV são mantidos, exceto para quem tem prioridade.</p>
         <form id="balance-form" class="balance-form">
           <h3>Dividir pelo número de inscritos</h3>
-          <p class="muted">Informe quantos guichês usar (sem contar o de prioridade). O sistema calcula faixas de letras com números de pessoas o mais parecidos possível, sem separar uma mesma letra entre guichês. A proposta aparece abaixo e só vale depois de salvar.</p>
+          <p class="muted">Informe quantos guichês usar (sem contar o de prioridade). O sistema calcula faixas de letras com números de pessoas o mais parecidos possível, sem separar uma mesma letra entre guichês. A proposta aparece abaixo e só vale depois de salvar. Use antes do início do credenciamento.</p>
           <div class="balance-fields">
             <label class="field">Número de guichês<input id="balance-count" type="number" min="1" max="26" required></label>
-            <label class="checkbox-field"><input id="balance-pending" type="checkbox"> Contar só quem ainda não retirou o kit</label>
             <button class="button secondary small" type="submit">Calcular divisão</button>
           </div>
         </form>

@@ -22,15 +22,12 @@ async function copyText(value) {
 }
 
 // Inscritos por inicial (quem segue as faixas), para mostrar o total de cada faixa enquanto se edita.
-let letterCounts = {all: {}, pending: {}};
-
-const pendingOnly = () => $('balance-pending').checked;
+let letterCounts = {};
 
 function rangeTotal(from, to) {
-  const counts = letterCounts[pendingOnly() ? 'pending' : 'all'] || {};
   const [start, end] = [from.trim().toUpperCase(), to.trim().toUpperCase()];
   if (!/^[A-Z]$/.test(start) || !/^[A-Z]$/.test(end) || start > end) return null;
-  return Object.entries(counts).reduce((sum, [letter, count]) => sum + (letter >= start && letter <= end ? count : 0), 0);
+  return Object.entries(letterCounts).reduce((sum, [letter, count]) => sum + (letter >= start && letter <= end ? count : 0), 0);
 }
 
 function updateRangeTotals() {
@@ -151,8 +148,6 @@ export async function initTools(refresh) {
     renderRangeRows([...ranges, {from: '', to: '', guiche: ''}]);
   });
 
-  $('balance-pending').addEventListener('change', updateRangeTotals);
-
   $('balance-form').addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button');
@@ -160,8 +155,7 @@ export async function initTools(refresh) {
     toolStatus('ranges-status', 'Calculando...');
     try {
       const result = await api('/api/guiches/balance', {
-        count: $('balance-count').value, pending_only: pendingOnly(),
-        ranges: currentRanges(), priority_guiche: $('priority-guiche').value,
+        count: $('balance-count').value, ranges: currentRanges(), priority_guiche: $('priority-guiche').value,
       });
       renderRangeRows(result.ranges);
       const totals = result.ranges.map(range => range.total);
