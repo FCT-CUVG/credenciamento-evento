@@ -11,38 +11,239 @@ Sistema local para pré-check-in, busca de kits, atendimento em guichês e acomp
 
 As telas operacionais da equipe exigem conta e senha; o resumo público mostra apenas três totais. A busca pública retorna somente nome e afiliação com os caracteres centrais de cada palavra mascarados, além de um token aleatório de uso único, válido por dez minutos, para confirmar a chegada. Ela não informa CPF, e-mail, pagamento ou situação da inscrição; quem não conseguir confirmar deve procurar atendimento. O menu da equipe mostra todos os guichês de `config/guiches.json`, além dos guichês atribuídos diretamente a participantes ou atendentes. A fila atualiza automaticamente a cada cinco segundos; os painéis, a cada dez segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
 
-## Identidade visual do evento
+## Instalação e implantação
 
-Copie [config/evento.example.yaml](config/evento.example.yaml) para `config/evento.yaml` e edite a cópia para definir o nome completo e curto do evento, a logo, a decoração opcional, as fontes de corpo e títulos e as cores. Os arquivos de imagem e fonte ficam em `static/assets/`; escreva no YAML apenas o nome do arquivo, por exemplo `logo: meu-evento.svg`. A logo aceita SVG, PNG, JPEG ou WebP; a decoração, quando definida, aceita SVG; as fontes aceitam WOFF2. Ao iniciar, a aplicação usa `config/evento.yaml` quando ele existir; caso contrário, usa o exemplo incluído.
+### O que precisa
 
-As cores devem ser escritas como `"#RRGGBB"`, com aspas. `navy` controla o painel de destaque e os títulos; `navy_header`, a navegação; `leaf` e `leaf_dark`, ações e estados positivos; `gold`, detalhes e foco; `ink` e `slate`, textos; `fog` e `white`, fundos. Preserve contraste legível entre fundo e texto ao escolher a paleta. Depois de editar o YAML ou substituir arquivos, recarregue a página; o servidor valida os nomes, formatos e campos da configuração. O YAML aceito aqui é intencionalmente simples: pares `chave: valor`, seções com recuo de dois espaços e comentários com `#`, sem listas ou recursos avançados. Isso mantém a aplicação sem dependências extras.
+| Item | Detalhe |
+|---|---|
+| Python 3.10 ou mais novo | Só a biblioteca padrão: não há `pip install`, e o SQLite já vem com o Python. |
+| Um servidor | Linux (ou macOS) acessível pela internet ou pela rede do evento. Uma máquina pequena basta. |
+| Um domínio com HTTPS | Para os celulares dos participantes acessarem pelo QR Code. O HTTPS fica num proxy reverso (Caddy ou nginx) na frente da aplicação. |
+| Acesso ao terminal | Para criar as contas da equipe e importar a lista. |
+| Google Sheets (opcional) | Cópia de segurança em planilha; veja [Google Sheets](#google-sheets-configurar-depois). |
 
-A página pública tem versões em inglês e português; as telas da equipe permanecem em português. As instruções específicas da origem da inscrição ficam em `registration_hint_en` e `registration_hint_pt` no mesmo YAML. Defina ambas ou remova ambas para usar textos genéricos. Assim, nomes de sistemas de inscrição não ficam fixos no código da aplicação.
-
-## Preparação
-
-Revise [config/guiches.json](config/guiches.json) antes de importar a lista real. As faixas incluídas são **somente um exemplo**. Cada faixa inclui as letras inicial e final; nomes com acentos são normalizados. A importação falha se a inicial não estiver coberta por uma faixa única. Uma coluna `guiche` no arquivo pode substituir a regra para casos específicos.
-
-CSV: cabeçalhos obrigatórios `nome,email`, em qualquer ordem; as colunas podem ser separadas por vírgula, ponto e vírgula ou tabulação. `nome_cracha` é opcional; quando vazio ou ausente, usa o primeiro e o último nome de `nome` (ou o único nome, se houver apenas um). `afiliacao` pode ficar vazia ou não existir no arquivo; nesse caso, a chegada é registrada, a pessoa é orientada a procurar um voluntário e aparece como "Orientação pendente" no painel detalhado. A busca do kit aguarda a afiliação ser preenchida no painel ou por uma nova importação. `cpf` é opcional, mas, quando preenchido, deve ter 11 dígitos ou seguir o formato `xxx.xxx.xxx-xx`. As colunas opcionais `pago` e `prioridade` aceitam `0` ou `1`; `guiche` também é opcional e, quando ausente, é calculado pelas faixas configuradas. Quem tem `prioridade=1` vai sempre para o guichê de prioridade, mesmo com `guiche` preenchido, (padrão `P`, configurável na aba **Configuração dos guichês** do painel; deixe o campo vazio para desativar). A prioridade também pode ser alterada participante a participante no painel detalhado; ao marcar, a pessoa passa para o guichê de prioridade, e ao desmarcar volta para o guichê da sua letra, desde que a busca do kit ainda não tenha começado. Na separação, os prioritários aparecem no topo de Aguardando busca, com um selo. É preciso haver pelo menos um participante após o cabeçalho; linhas vazias são ignoradas. JSON: lista de objetos com essas mesmas chaves, ou objeto `{ "participants": [...] }`. Há um modelo em [exemplos/participantes.csv](exemplos/participantes.csv). Participantes não pagos também registram a chegada, são orientados a procurar um voluntário e aparecem como "Orientação pendente" até o pagamento ser confirmado. Ao salvar a configuração de guichês no painel, quem ainda não começou a busca do kit passa automaticamente para o guichê calculado pelas novas faixas (ou pelo guichê de prioridade). Renomear um guichê, mantendo a mesma faixa de letras, atualiza todos os participantes daquele guichê, inclusive quem já está em busca ou pronto, e também as contas de atendentes. Guichês informados na coluna `guiche` com valor diferente do calculado são tratados como escolha manual e mantidos, exceto para quem tem prioridade. Numa reimportação, uma mudança de guichê é recusada se a busca do kit ou a retirada já começou. O painel detalhado mostra, por guichê, o total de inscritos e quantos ainda têm pagamento ou afiliação pendente.
-
-No painel detalhado, a coordenação pode usar **Exportar dados** para baixar um CSV reimportável com `id,nome,nome_cracha,afiliacao,email,cpf,pago,prioridade,guiche` e os campos operacionais `situacao,responsavel,pre_checkin_em,busca_iniciada_em,pronto_em,retirado_em,atualizado_em,revisao`. O `id` permite corrigir nome ou e-mail na planilha exportada sem criar outra pessoa; arquivos sem `id` continuam sendo associados por nome e e-mail. Na importação, os campos operacionais podem existir, mas são ignorados para preservar o estado já registrado. **Exportar logs de movimentações** baixa o histórico com participante, ação, responsável e data/hora. Os arquivos contêm dados pessoais e devem ser guardados com cuidado.
-
-As faixas de letras podem ser editadas no mesmo painel. É preciso cobrir A a Z uma única vez; cada linha aponta para um guichê. A alteração afeta a atribuição em importações futuras. Reimporte a lista para recalcular o guichê de participantes que ainda não iniciaram a busca; guichês de buscas ou retiradas já iniciadas ficam protegidos.
+### Experimentar na própria máquina
 
 ```sh
-python3 app.py import caminho/participantes.csv
-python3 app.py user coordenacao admin
-python3 app.py user voluntario1 volunteer
-python3 app.py user atendimento1 attendant --guiche 1
+python3 app.py import exemplos/participantes-teste.csv
+python3 app.py user coordenacao admin        # pede a senha (mínimo 10 caracteres)
 export CHECKIN_SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
-python3 app.py serve --host 127.0.0.1 --port 8000
+python3 app.py serve                         # abre em http://127.0.0.1:8000
 ```
 
-Senhas são pedidas no terminal. O segredo de sessão deve ser salvo num gerenciador de segredos ou variável persistente do servidor; se mudar, sessões existentes expiram. Para acesso por celular ou tablet, use um domínio com HTTPS apontando para o servidor e configure `CHECKIN_PUBLIC_URL=https://seu-dominio`. Publique apenas o aplicativo por um proxy HTTPS, mantenha a pasta `data/` fora do acesso web e faça backup periódico dessa pasta. O servidor de desenvolvimento escuta apenas em `127.0.0.1` por padrão.
+A página pública fica em `/`; a equipe entra em `/login`. Os dados vão para a pasta `data/`.
 
-Se o proxy HTTPS estiver no mesmo servidor, configure `CHECKIN_TRUSTED_PROXY=1` e faça o proxy substituir o cabeçalho `X-Forwarded-For` pelo IP real do cliente. Isso mantém o limite de tentativas individual mesmo com muitos participantes atrás do proxy. Sem essa configuração, todas as requisições repassadas de `127.0.0.1` compartilham o mesmo limite.
+### Colocar num servidor
 
-O QR Code deverá apontar para a URL pública da raiz (`https://seu-dominio/`). Gere e imprima o código quando o domínio estiver definido; antes da implantação não há URL definitiva para codificar.
+**1. Copie o código** para o servidor (por exemplo, em `/opt/credenciamento`) e crie um usuário do sistema só para o serviço:
+
+```sh
+sudo git clone <url-do-repositório> /opt/credenciamento
+sudo useradd --system --home /opt/credenciamento credenciamento
+sudo chown -R credenciamento: /opt/credenciamento
+```
+
+**2. Configure o evento:** crie `config/evento.yaml` (veja [Identidade visual](#identidade-visual-do-evento)) e ajuste as faixas de `config/guiches.json` (veja [Guichês](#guichês)).
+
+**3. Defina as variáveis de ambiente** num arquivo, por exemplo `/etc/credenciamento.env` (permissão `600`):
+
+| Variável | Obrigatória | Para que serve |
+|---|---|---|
+| `CHECKIN_SESSION_SECRET` | sim | Assina as sessões da equipe. Mínimo de 32 caracteres; gere com o comando acima e guarde-o. Se mudar, todos precisam entrar de novo. |
+| `CHECKIN_PUBLIC_URL` | recomendada | Endereço público, ex.: `https://credenciamento.seu-dominio.org`. Com `https://`, os cookies passam a exigir conexão segura. |
+| `CHECKIN_TRUSTED_PROXY` | com proxy | `1` quando o proxy HTTPS roda na mesma máquina. Faz o limite de tentativas usar o IP real de cada pessoa. |
+| `CHECKIN_DATA_DIR` | não | Pasta do banco e do CSV espelho. Padrão: `data/` dentro da instalação. |
+| `CHECKIN_EVENT_CONFIG` | não | Outro caminho para o YAML do evento. |
+| `CHECKIN_RANGES_FILE` | não | Outro caminho para o arquivo de guichês. |
+| `CHECKIN_SHEETS_URL` e `CHECKIN_SHEETS_SECRET` | não | Ativam a cópia no Google Sheets. |
+
+```sh
+CHECKIN_SESSION_SECRET=cole-aqui-o-segredo-gerado
+CHECKIN_PUBLIC_URL=https://credenciamento.seu-dominio.org
+CHECKIN_TRUSTED_PROXY=1
+```
+
+**4. Crie as contas e importe a lista.** Rode os comandos como o usuário do serviço e com as mesmas variáveis, para usar o mesmo banco:
+
+```sh
+cd /opt/credenciamento
+run() { sudo -u credenciamento sh -c 'set -a; . /etc/credenciamento.env; exec "$@"' sh "$@"; }
+run python3 app.py user coordenacao admin
+run python3 app.py user voluntario1 volunteer
+run python3 app.py user atendimento1 attendant --guiche 1
+run python3 app.py import /caminho/participantes.csv
+```
+
+Papéis: `admin` (coordenação, painel detalhado), `volunteer` (separação dos kits) e `attendant` (um guichê, informado em `--guiche`). As senhas são pedidas no terminal; rodar o comando de novo para o mesmo nome troca a senha.
+
+**5. Deixe rodando como serviço** (`/etc/systemd/system/credenciamento.service`):
+
+```ini
+[Unit]
+Description=Credenciamento do evento
+After=network.target
+
+[Service]
+User=credenciamento
+WorkingDirectory=/opt/credenciamento
+EnvironmentFile=/etc/credenciamento.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 app.py serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo systemctl enable --now credenciamento
+sudo journalctl -u credenciamento -f      # acompanhar o log
+```
+
+**6. Publique com HTTPS.** A aplicação escuta só em `127.0.0.1`; o proxy recebe os acessos externos. Com [Caddy](https://caddyserver.com), que obtém o certificado sozinho (`/etc/caddy/Caddyfile`):
+
+```caddyfile
+credenciamento.seu-dominio.org {
+    reverse_proxy 127.0.0.1:8000 {
+        header_up X-Forwarded-For {remote_host}
+    }
+}
+```
+
+Com nginx, use `proxy_pass http://127.0.0.1:8000;` e `proxy_set_header X-Forwarded-For $remote_addr;`. O proxy precisa **substituir** esse cabeçalho pelo IP real: a variante comum `$proxy_add_x_forwarded_for` acrescenta ao valor enviado pelo cliente e permitiria burlar o limite de tentativas.
+
+**7. Gere o QR Code** apontando para a raiz do domínio (`https://credenciamento.seu-dominio.org/`) quando o endereço estiver definitivo.
+
+### Atualizar para uma nova versão
+
+Com o atalho `run` do passo 4:
+
+```sh
+cd /opt/credenciamento
+run python3 app.py backup /caminho/seguro/antes-da-atualizacao.sqlite3
+sudo -u credenciamento git pull
+sudo systemctl restart credenciamento
+```
+
+O banco é atualizado automaticamente ao iniciar; não há passo manual de migração.
+
+### Antes do evento
+
+- [ ] Faixas de guichês revisadas e lista real importada (confira os totais por guichê no painel).
+- [ ] Contas criadas para coordenação, voluntários e cada guichê.
+- [ ] Domínio com HTTPS funcionando e QR Code impresso.
+- [ ] Ensaio completo em vários celulares e guichês com uma cópia da lista, incluindo queda de rede e volta da sincronização.
+- [ ] Backup testado (`app.py backup`) e guardado fora do servidor.
+
+## Identidade visual do evento
+
+Nome, logo, fontes e cores do evento ficam num único arquivo, sem mexer no código.
+
+**Como configurar**
+
+1. Copie o exemplo: `cp config/evento.example.yaml config/evento.yaml`.
+2. Coloque logo, decoração e fontes em `static/assets/`.
+3. Edite `config/evento.yaml`, usando apenas o nome dos arquivos (ex.: `logo: meu-evento.svg`).
+4. Recarregue a página. Se você acabou de criar o `evento.yaml` com o servidor rodando, reinicie-o uma vez; sem esse arquivo, a aplicação usa o exemplo.
+
+O servidor valida a configuração e aponta o campo com problema.
+
+### Campos
+
+| Campo | Obrigatório | O que define | Formato |
+|---|---|---|---|
+| `name` | sim | Nome completo (títulos e abas do navegador) | texto, até 100 caracteres |
+| `short_name` | sim | Nome curto | texto, até 100 caracteres |
+| `logo` | sim | Logo do cabeçalho | SVG, PNG, JPEG ou WebP |
+| `decoration` | não | Imagem decorativa de fundo | SVG |
+| `fonts.body` | sim | Fonte dos textos | WOFF2 |
+| `fonts.display` | sim | Fonte dos títulos | WOFF2 |
+| `registration_hint_en` e `registration_hint_pt` | não, mas os dois juntos | Instrução na busca da página pública (ex.: onde a pessoa se inscreveu) | texto, até 300 caracteres |
+
+Sem os `registration_hint_*`, a página pública mostra um texto genérico. Assim, nomes de sistemas de inscrição não ficam fixos no código.
+
+### Cores
+
+Todas são obrigatórias, no formato `"#RRGGBB"` **com aspas**. Escolha pares de fundo e texto com contraste legível.
+
+| Chave | Onde aparece |
+|---|---|
+| `primary` | Títulos e painel de destaque |
+| `navigation` | Barra de navegação |
+| `text` | Texto principal |
+| `text_muted` | Textos secundários |
+| `action` | Botões e estados positivos |
+| `action_hover` | Botões ao passar o mouse |
+| `focus` | Detalhes e contorno de foco |
+| `page_background` | Fundo das páginas |
+| `surface` | Fundo de cartões e painéis |
+
+### Formato do arquivo
+
+O YAML é intencionalmente simples, para a aplicação continuar sem dependências extras:
+
+- pares `chave: valor`;
+- seções (`fonts`, `colors`) com recuo de dois espaços;
+- comentários com `#`;
+- sem listas nem outros recursos avançados.
+
+```yaml
+name: Nome do Evento
+short_name: EVENTO
+logo: event-logo.svg
+fonts:
+  body: noto-sans.woff2
+  display: bebas-neue.woff2
+colors:
+  primary: "#18515a"
+  # … demais cores da tabela acima
+```
+
+### Idiomas
+
+A página pública tem versões em inglês e português; as telas da equipe ficam em português.
+
+## Lista de participantes e guichês
+
+### Arquivo de participantes
+
+CSV (separado por vírgula, ponto e vírgula ou tabulação) ou JSON (lista de objetos com as mesmas chaves, ou `{ "participants": [...] }`). Há modelos em [exemplos/participantes.csv](exemplos/participantes.csv) e [exemplos/participantes-teste.csv](exemplos/participantes-teste.csv). Importe pelo painel detalhado ou com `python3 app.py import arquivo.csv`.
+
+| Coluna | Obrigatória | Regra |
+|---|---|---|
+| `nome` | sim | Nome completo. A primeira letra define o guichê. |
+| `email` | sim | Junto com o nome, identifica a pessoa numa reimportação. |
+| `nome_cracha` | não | Vazio: usa o primeiro e o último nome. |
+| `afiliacao` | não | Vazia: a pessoa registra a chegada, mas fica em "Orientação pendente" até alguém preencher. |
+| `cpf` | não | 11 dígitos ou `xxx.xxx.xxx-xx`. |
+| `pago` | não | `0` ou `1`. Com `0`, fica em "Orientação pendente" até confirmar o pagamento. |
+| `prioridade` | não | `0` ou `1`. Com `1`, vai sempre para o guichê de prioridade. |
+| `guiche` | não | Substitui o guichê calculado pelas faixas (exceto para quem tem prioridade). |
+| `id` | não | Vem da exportação; permite corrigir nome ou e-mail sem criar outra pessoa. |
+
+- É preciso pelo menos uma pessoa após o cabeçalho; linhas vazias são ignoradas.
+- Reimportar atualiza os dados cadastrais sem apagar as etapas já registradas. A troca de guichê é recusada para quem já está em busca ou já retirou o kit.
+- Os campos operacionais de um CSV exportado (`situacao`, `responsavel`, horários, `revisao`) são aceitos e ignorados.
+- Pendências (pagamento ou afiliação) são resolvidas no painel detalhado: o atalho "Pendências de orientação" filtra quem chegou nessa situação.
+
+### Guichês
+
+- As faixas de letras ficam em [config/guiches.json](config/guiches.json) (as incluídas são **só um exemplo**) e podem ser editadas no painel, na aba **Configuração dos guichês**.
+- As faixas precisam cobrir de A a Z uma única vez. Vale a primeira letra do nome completo, sem acento.
+- O guichê de prioridade tem o padrão `P` e pode ser renomeado no painel; deixe o campo vazio para desativá-lo. Os prioritários aparecem no topo da separação.
+- Ao salvar a configuração, quem ainda não começou a busca muda de guichê na hora. Renomear um guichê, mantendo a mesma faixa, leva junto todos os participantes e as contas de atendente daquele guichê.
+- Um guichê informado na coluna `guiche`, diferente do calculado, é tratado como escolha manual e mantido (exceto para quem tem prioridade).
+- O painel mostra o total de inscritos por guichê.
+
+### Exportações
+
+No painel detalhado:
+
+- **Exportar dados**: CSV reimportável com os dados cadastrais e os campos operacionais.
+- **Exportar logs de movimentações**: histórico de cada ação, com responsável e data/hora.
+
+Os arquivos contêm dados pessoais; guarde-os com cuidado.
 
 ## Armazenamento e cópia
 
@@ -70,8 +271,6 @@ python3 -m unittest discover -s tests -v
 ```
 
 Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `test_queue_and_status.py`, `test_import_export.py`, `test_desks.py`, `test_web.py`, `test_storage.py`). A base comum em `tests/support.py` cria banco e configuração numa pasta temporária, faz requisições diretas ao servidor e já tem os usuários `vol1`, `vol2`, `att1` e `admin`.
-
-Antes do uso real, teste o fluxo completo em vários celulares e guichês com uma cópia da lista, confirme o domínio HTTPS e faça um ensaio de perda de rede e retorno da sincronização.
 
 ## Organização do código
 
