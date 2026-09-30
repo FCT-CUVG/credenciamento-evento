@@ -58,10 +58,8 @@ def create_schema(db):
       attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
       FOREIGN KEY(event_id) REFERENCES events(id)
     );
-    CREATE TABLE IF NOT EXISTS lookup_tokens (
-      token_hash TEXT PRIMARY KEY, participant_id TEXT NOT NULL, expires_at REAL NOT NULL,
-      FOREIGN KEY(participant_id) REFERENCES participants(id)
-    );
+    -- A busca pública passou a registrar a chegada num passo só, sem token de confirmação.
+    DROP TABLE IF EXISTS lookup_tokens;
     """)
     columns = {row["name"] for row in db.execute("PRAGMA table_info(participants)")}
     added = set()

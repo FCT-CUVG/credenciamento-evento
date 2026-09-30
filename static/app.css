@@ -85,7 +85,6 @@ body[data-page="volunteer"] main, body[data-page="attendant"] main, body[data-pa
 #lookup-form { margin-top: 10px; }
 #lookup-form .button { min-height: 76px; }
 .lookup-alternative { justify-self: start; }
-.lookup-alternative-fields { display: grid; gap: 12px; }
 #lookup-form .lookup-alternative { min-height: 45px; }
 .form { display: grid; gap: 21px; }
 .field { display: grid; gap: 8px; font-weight: 750; color: var(--ink); }
@@ -113,10 +112,12 @@ body[data-page="public"] .field input, body[data-page="public"] .field input::pl
 .stack { display: grid; gap: 16px; }
 .stack > p { margin-bottom: 0; }
 .form-panel .person-name { color: var(--navy); font-size: clamp(2.3rem, 4vw, 3.8rem); }
-#found-affiliation.affiliation-missing { color: #a3560c; font-style: italic; }
 .desk-callout { display: grid; justify-items: center; gap: 8px; padding: 24px; border: 2px solid var(--leaf); border-radius: 10px; background: #e3f6ec; color: var(--navy); text-align: center; }
 .desk-callout-label { font-size: .95rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--leaf-dark); }
 .desk-callout-number { font: 400 clamp(5rem, 10vw, 7.5rem)/.85 "Event Display", sans-serif; }
+.notice-callout { display: grid; gap: 10px; padding: 24px; border: 2px solid #bf6d22; border-radius: 10px; background: #fff4e3; color: #70410f; text-align: center; }
+.form-panel .notice-callout-title { margin: 0; color: #8a4b0f; font: 400 clamp(2.2rem, 4vw, 3.2rem)/1 "Event Display", sans-serif; letter-spacing: .02em; }
+.notice-callout p { margin: 0; font-weight: 700; line-height: 1.5; }
 .desk-callout-range { font: 400 clamp(2rem, 4vw, 2.8rem)/1 "Event Display", sans-serif; letter-spacing: .02em; }
 .person-name { font-family: "Event Display", sans-serif; font-weight: 400; line-height: 1; overflow-wrap: anywhere; }
 .muted { color: var(--slate); }

@@ -1,8 +1,8 @@
 # Copie este arquivo para evento.yaml e personalize a identidade do seu evento.
 name: Nome do Evento
 short_name: EVENTO
-registration_hint_en: "use your CPF number used during registration"
-registration_hint_pt: "Use seu CPF utilizado durante a inscrição"
+registration_hint_en: "Use the CPF from your registration or, if you don't have one, your e-mail."
+registration_hint_pt: "Use o CPF informado na inscrição ou, se não tiver CPF, o e-mail."
 logo: event-logo.svg
 # decoration: event-decoration.svg
 

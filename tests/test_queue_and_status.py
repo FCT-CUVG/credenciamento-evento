@@ -12,10 +12,7 @@ from support import CredenciamentoTestCase
 
 class QueueAndStatusTest(CredenciamentoTestCase):
     def test_complete_flow_and_atomic_claim(self):
-        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
-        self.assertEqual(code, 200)
-        self.assertNotIn("cpf", found)
-        code, done, _ = self.request("/api/precheck", {"token": found["token"]})
+        code, done, _ = self.request("/api/checkin", {"cpf": "12345678901"})
         self.assertEqual((code, done), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": False, "guiche": "1", "guiche_ranges": [{"from": "A", "to": "D"}], "guiche_priority": False}))
         users = [self.login("vol1"), self.login("vol2")]
         with database.connect() as db:
@@ -63,9 +60,7 @@ class QueueAndStatusTest(CredenciamentoTestCase):
         code, desks, _ = self.request("/api/guiches", cookie=attendant[0])
         self.assertEqual(code, 200)
         self.assertIn({"id": "7", "ranges": [], "priority": False}, desks["guiches"])
-        code, found, _ = self.request("/api/lookup", {"cpf": "98765432100"})
-        self.assertEqual(code, 200)
-        self.request("/api/precheck", {"token": found["token"]})
+        self.assertEqual(self.request("/api/checkin", {"cpf": "98765432100"})[0], 200)
         with database.connect() as db:
             pid = db.execute("SELECT id FROM participants WHERE name_key='bruno lima'").fetchone()[0]
         volunteer = self.login("vol1")
@@ -77,9 +72,7 @@ class QueueAndStatusTest(CredenciamentoTestCase):
         self.assertEqual(self.request("/api/action/undo_ready", {"id": pid}, *attendant)[0], 409)
 
     def test_volunteer_can_confirm_pickup_at_guiche(self):
-        code, found, _ = self.request("/api/lookup", {"cpf": "12345678901"})
-        self.assertEqual(code, 200)
-        self.assertEqual(self.request("/api/precheck", {"token": found["token"]})[0], 200)
+        self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
         with database.connect() as db:
             pid = db.execute("SELECT id FROM participants WHERE name_key='ana silva'").fetchone()[0]
         separator = self.login("vol1")
