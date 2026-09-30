@@ -117,14 +117,17 @@ Com nginx, use `proxy_pass http://127.0.0.1:8000;` e `proxy_set_header X-Forward
 
 ### Atualizar para uma nova versão
 
-Com o atalho `run` do passo 4:
+No servidor, rode o script de atualização:
 
 ```sh
 cd /opt/credenciamento
-run python3 app.py backup /caminho/seguro/antes-da-atualizacao.sqlite3
-sudo -u credenciamento git pull
-sudo systemctl restart credenciamento
+sudo ./atualizar.sh            # versão mais recente da main
+sudo ./atualizar.sh v1.2.0     # uma tag, branch ou commit específico
 ```
+
+O script busca o código no GitHub e, se houver mudança, faz um backup do banco em `/var/backups/credenciamento/`, troca o código e reinicia o serviço. Se o serviço não subir, ele mostra o comando para voltar à versão anterior. Se já estiver na versão pedida, não faz nada. Ele usa os caminhos e nomes deste guia (`/etc/credenciamento.env`, usuário e serviço `credenciamento`); para outros valores, veja as variáveis no início de `atualizar.sh`.
+
+Se algum arquivo do repositório foi editado direto no servidor (por exemplo, `config/guiches.json`) e a nova versão também o altera, o git recusa a troca e o serviço continua na versão anterior. Para evitar isso, mantenha as faixas fora da pasta da instalação e aponte `CHECKIN_RANGES_FILE` para elas.
 
 O banco é atualizado automaticamente ao iniciar; não há passo manual de migração.
 
