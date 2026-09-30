@@ -69,6 +69,8 @@ O envio preserva revisões mais recentes e não duplica IDs de eventos em tentat
 python3 -m unittest discover -s tests -v
 ```
 
+Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `test_queue_and_status.py`, `test_import_export.py`, `test_desks.py`, `test_web.py`, `test_storage.py`). A base comum em `tests/support.py` cria banco e configuração numa pasta temporária, faz requisições diretas ao servidor e já tem os usuários `vol1`, `vol2`, `att1` e `admin`.
+
 Antes do uso real, teste o fluxo completo em vários celulares e guichês com uma cópia da lista, confirme o domínio HTTPS e faça um ensaio de perda de rede e retorno da sincronização.
 
 ## Organização do código
