@@ -543,8 +543,10 @@ async function initDashboard(){
     event.preventDefault();
     const form=event.target,item=items.find(candidate=>candidate.id===form.dataset.participantId);
     if(!item)return;
-    const button=form.querySelector('button[type="submit"]');button.disabled=true;
-    try{await api('/api/participants/affiliation',{id:item.id,affiliation:form.elements.namedItem('affiliation').value});affiliationEditing=null;await refresh()}
+    const button=form.querySelector('button[type="submit"]'),input=form.elements.namedItem('affiliation');
+    // Tira o foco do campo (Enter o mantém ali) para a tabela poder ser redesenhada ao salvar.
+    button.disabled=true;input.blur();
+    try{await api('/api/participants/affiliation',{id:item.id,affiliation:input.value});affiliationEditing=null;await refresh()}
     catch(err){message('page-error',err.message);button.disabled=false}
   });
   $('dashboard-body').addEventListener('keydown',event=>{if(event.key==='Escape'&&event.target.matches('.affiliation-input')){affiliationEditing=null;renderDashboard()}});
