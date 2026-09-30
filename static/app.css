@@ -6,6 +6,7 @@
   --leaf: #32a64f;
   --leaf-dark: #25813c;
   --gold: #e2c576;
+  --priority: #a8520c;
   --fog: #f0f2f2;
   --white: #fff;
   font-family: "Event Body", sans-serif;
@@ -175,11 +176,12 @@ body[data-page="public"] .field input, body[data-page="public"] .field input::pl
 .attendant-card .name { font-size: clamp(1.5rem, 2.4vw, 2rem); }
 .attendant-card .queue-card-main > .button { margin-top: 8px; }
 .queue-card-main { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 20px; }
-.queue-guiche { display: flex; flex-direction: column; align-items: center; min-width: 0; height: 100%; padding: 16px 8px; background: var(--navy); color: var(--white); text-align: center; }
+.queue-guiche { display: flex; flex-direction: column; align-items: center; min-width: 0; height: 100%; padding: 16px 8px; background: var(--navy); color: var(--white); text-align: center; container-type: inline-size; }
+.priority-desk .queue-guiche, .priority-desk .guiche { background: var(--priority); }
 .queue-guiche-label { font-size: .85rem; font-weight: 750; line-height: 1.2; }
 .queue-guiche-value { display: grid; flex: 1; place-items: center; max-width: 100%; font: 400 clamp(3rem, 5vw, 5rem)/1 "Event Display", sans-serif; overflow-wrap: anywhere; }
 .queue-guiche-value.medium { font-size: clamp(2.2rem, 3.4vw, 3.4rem); }
-.queue-guiche-value.long { font-size: clamp(1.05rem, 1.3vw, 1.35rem); line-height: 1.05; overflow-wrap: normal; word-break: normal; }
+.queue-guiche-value.long { font-size: clamp(1.05rem, 26cqi, 2.2rem); line-height: 1.05; overflow-wrap: normal; word-break: normal; }
 .queue-card .name { font-size: clamp(1.25rem, 1.8vw, 1.7rem); line-height: 1.17; font-weight: 850; overflow-wrap: anywhere; color: var(--ink); }
 .queue-card .meta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 9px; }
 .guiche { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 13px; background: var(--navy); color: var(--white); border-radius: 4px; font-size: 1.02rem; font-weight: 850; }

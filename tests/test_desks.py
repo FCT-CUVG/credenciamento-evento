@@ -84,7 +84,9 @@ class DesksTest(CredenciamentoTestCase):
         token = self.request("/api/lookup", {"cpf": "98765432100"})[1]["token"]
         self.request("/api/precheck", {"token": token})
         self.assertEqual(self.request("/api/action/claim", {"id": pid}, *self.login("vol1"))[0], 200)
-        queue = self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"]
+        queue_data = self.request("/api/queue", cookie=self.login("vol1")[0])[1]
+        self.assertEqual(queue_data["priority_guiche"], "P")
+        queue = queue_data["items"]
         self.assertEqual(queue[0]["cpf_prefix"], "987")
         self.assertNotIn("cpf", queue[0])
         self.assertEqual(self.request("/api/participants/priority", {"id": pid, "priority": 1}, *admin)[0], 409)
