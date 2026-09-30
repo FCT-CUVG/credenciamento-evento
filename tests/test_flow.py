@@ -16,6 +16,7 @@ import urllib.request
 from credenciamento import auth, common, csv_io, desks, event_theme, participants, settings, sheets
 from credenciamento import db as database
 from credenciamento.bootstrap import init_db
+from credenciamento.web.routes import ROUTES
 from credenciamento.web.server import App
 
 
@@ -695,6 +696,24 @@ class FlowTest(unittest.TestCase):
             self.assertEqual(participants.status_fields(row, "completed", "admin"),
                              {"status": "completed", "prechecked_at": "t-arrival", "claimed_at": "agora",
                               "ready_at": "t-ready", "completed_at": "agora", "claimed_by": "vol2"})
+
+    def test_every_staff_route_requires_login_csrf_and_role(self):
+        volunteer = self.login("vol1")
+        protected = {key: route for key, route in ROUTES.items() if route.roles}
+        self.assertGreater(len(protected), 10)
+        for (method, path), route in protected.items():
+            target = path + "claim" if route.prefix else path
+            with self.subTest(method=method, path=path):
+                code, result, _ = self.request(target, None if method == "GET" else {})
+                self.assertEqual(code, 401)
+                if method == "POST":
+                    code, result, _ = self.request(target, {}, cookie=volunteer[0])
+                    self.assertEqual((code, result["error"]), (403, "Sessão inválida. Recarregue a página."))
+                    if "volunteer" not in route.roles:
+                        code, result, _ = self.request(target, {}, *volunteer)
+                        self.assertEqual((code, result["error"]), (403, route.forbidden))
+                elif "volunteer" not in route.roles:
+                    self.assertEqual(self.request(target, cookie=volunteer[0])[0], 401)
 
 
 if __name__ == "__main__":

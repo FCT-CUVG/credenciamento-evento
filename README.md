@@ -86,5 +86,7 @@ Antes do uso real, teste o fluxo completo em vários celulares e guichês com um
 | `csv_io.py` | Importação e exportações CSV/JSON |
 | `auth.py` | Senhas, sessão, CSRF e limite de tentativas |
 | `sheets.py` | Sincronização com o Google Sheets |
-| `web/server.py` | Servidor HTTP e rotas |
+| `web/server.py` | Servidor HTTP, páginas estáticas e despacho da API (login, CSRF e papel checados num lugar só) |
+| `web/routes.py` | Tabela de rotas: cada rota declara método, caminho e papéis (`@route`) |
+| `web/public.py` / `staff.py` / `admin.py` | Rotas públicas, da equipe e da coordenação |
 | `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `sync`, `backup` |
