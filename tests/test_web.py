@@ -136,6 +136,14 @@ class WebTest(CredenciamentoTestCase):
                 self.assertEqual(client_ip(peer), expected)
         with patch.object(settings, "TRUSTED_PROXY", "1"):
             self.assertEqual(client_ip("127.0.0.1", "not-an-ip"), "127.0.0.1")
+            self.assertEqual(client_ip("127.0.0.1", ""), "127.0.0.1")
+        # Proxy que acrescenta ao cabeçalho: o valor inventado pelo cliente fica à esquerda.
+        with patch.object(settings, "TRUSTED_PROXY", "10.0.0.5"):
+            self.assertEqual(client_ip("10.0.0.5", "198.51.100.1, 203.0.113.7"), "203.0.113.7")
+        # Dois proxies confiáveis em sequência (proxy da instituição e rede do Docker).
+        with patch.object(settings, "TRUSTED_PROXY", "172.16.0.0/12,10.0.0.5,"):
+            self.assertEqual(client_ip("172.18.0.1", "198.51.100.1, 203.0.113.7, 10.0.0.5"), "203.0.113.7")
+            self.assertEqual(client_ip("172.18.0.1", "10.0.0.5"), "10.0.0.5")
         with self.assertRaises(ValueError):
             settings.trusted_proxy_networks("rede-docker")
 

@@ -15,6 +15,14 @@ from . import admin, public, staff  # noqa: F401  (importar registra as rotas)
 from .routes import STAFF, find
 
 
+def is_trusted(address, networks):
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(ip in network for network in networks)
+
+
 class App(BaseHTTPRequestHandler):
     server_version = "CheckIn/1"
 
@@ -23,17 +31,17 @@ class App(BaseHTTPRequestHandler):
         print(f"{self.address_string()} - {fmt % args}")
 
     def client_ip(self):
+        # Atrás de proxies confiáveis, lê o X-Forwarded-For da direita para a esquerda e para no
+        # primeiro endereço que não é de proxy confiável: o que vem antes pode ter sido inventado
+        # pelo próprio cliente. Assim vale tanto o proxy que substitui quanto o que acrescenta.
+        trusted = settings.trusted_proxy_networks()
         peer = self.client_address[0]
-        try:
-            peer_ip = ipaddress.ip_address(peer)
-        except ValueError:
-            return peer
-        if any(peer_ip in network for network in settings.trusted_proxy_networks()):
-            forwarded = self.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
+        forwarded = self.headers.get("X-Forwarded-For", "").split(",")
+        while forwarded and is_trusted(peer, trusted):
             try:
-                return str(ipaddress.ip_address(forwarded))
+                peer = str(ipaddress.ip_address(forwarded.pop().strip()))
             except ValueError:
-                pass
+                break
         return peer
 
     def respond(self, status, data, headers=None):
