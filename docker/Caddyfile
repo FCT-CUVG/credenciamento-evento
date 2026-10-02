@@ -1,0 +1,9 @@
+# HTTPS automático para o perfil "https" do docker compose.
+# O domínio vem de CHECKIN_DOMAIN, no arquivo .env.
+{$CHECKIN_DOMAIN} {
+    encode
+    reverse_proxy app:8000 {
+        # Substitui (não acrescenta) o cabeçalho, para o limite de tentativas usar o IP real.
+        header_up X-Forwarded-For {remote_host}
+    }
+}

@@ -24,7 +24,11 @@ class App(BaseHTTPRequestHandler):
 
     def client_ip(self):
         peer = self.client_address[0]
-        if settings.TRUST_PROXY and peer in ("127.0.0.1", "::1"):
+        try:
+            peer_ip = ipaddress.ip_address(peer)
+        except ValueError:
+            return peer
+        if any(peer_ip in network for network in settings.trusted_proxy_networks()):
             forwarded = self.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
             try:
                 return str(ipaddress.ip_address(forwarded))
