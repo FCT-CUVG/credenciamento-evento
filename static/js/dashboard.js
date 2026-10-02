@@ -1,5 +1,5 @@
 // Painel detalhado da coordenação: números, tabela de participantes e ferramentas.
-import {$, api, clockTime, loadEventConfig, message, requireSession, statusNames} from './common.js';
+import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
 import {fillDeskFilter, renderDashboard, renderDashboardKeepingFocus, renderDeskStats, state} from './dashboard/table.js';
 import {initTabs, initTools} from './dashboard/tools.js';
 
@@ -9,6 +9,40 @@ function syncText(data) {
   if (!data.sheet_configured) return 'Google Sheets ainda não configurado; as alterações estão guardadas localmente.';
   if (data.sheet_pending) return `${data.sheet_pending} alterações aguardando sincronização com Google Sheets.`;
   return 'Cópia local atualizada; sem alterações pendentes para Google Sheets.';
+}
+
+// Abrir e fechar o pré-check-in pelo celular; fechado, a página pública só mostra um aviso.
+let checkin = null;
+
+function renderCheckin(state, misses) {
+  checkin = state;
+  const box = document.querySelector('.checkin-control'), info = $('checkin-state'), toggle = $('checkin-toggle');
+  box.classList.toggle('is-open', state.open);
+  const who = state.by ? ` · ${state.open ? 'aberto' : 'fechado'} por ${state.by}${state.at ? ' às ' + clockTime(state.at) : ''}` : '';
+  info.replaceChildren(el('strong', '', state.open ? 'Aberto' : 'Fechado'),
+    state.open ? ' — os participantes conseguem registrar a chegada' : ' — a página pública só mostra um aviso', who);
+  toggle.textContent = state.open ? 'Fechar pré-check-in' : 'Abrir pré-check-in';
+  toggle.className = 'button' + (state.open ? ' secondary' : '');
+  toggle.disabled = false;
+  // Muitas buscas sem resultado em pouco tempo podem ser alguém testando CPFs.
+  message('misses-alert', misses.count >= misses.alert
+    ? `Atenção: ${misses.count} buscas sem resultado na página pública nos últimos ${misses.minutes} minutos. ` +
+      'Pode ser alguém testando CPFs. Se não houver fila no credenciamento, considere fechar o pré-check-in.'
+    : '');
+}
+
+async function toggleCheckin() {
+  const open = !checkin.open;
+  if (!confirm(open ? 'Abrir o pré-check-in pelo celular para os participantes?'
+    : 'Fechar o pré-check-in? Quem abrir a página pública verá um aviso para procurar a equipe.')) return;
+  $('checkin-toggle').disabled = true;
+  try {
+    await api('/api/public-checkin', {open});
+    await refresh();
+  } catch (err) {
+    message('page-error', err.message);
+    $('checkin-toggle').disabled = false;
+  }
 }
 
 async function refresh() {
@@ -23,6 +57,7 @@ async function refresh() {
     $('stat-completed').textContent = counts.completed;
     $('pending-shortcut-count').textContent = data.guidance_pending;
     renderDeskStats(data.desks, data.registration_pending);
+    renderCheckin(data.public_checkin, data.search_misses);
     fillDeskFilter(data.desks);
     $('sync-status').textContent = `Atualizado às ${clockTime()} · ${syncText(data)}`;
     renderDashboardKeepingFocus();
@@ -38,11 +73,39 @@ function firstPage() {
   renderDashboard();
 }
 
+// O painel não recebe CPF nem e-mail; um CPF ou e-mail completo digitado na busca é conferido no servidor.
+const lookupQuery = text => {
+  const value = text.trim();
+  return (/^[\d.\-\s]+$/.test(value) && value.replace(/\D/g, '').length === 11) || /^[^@\s]+@[^@\s]+$/.test(value);
+};
+let lookupTimer = null;
+
+function searchChanged() {
+  const text = $('dashboard-filter').value;
+  clearTimeout(lookupTimer);
+  if (!lookupQuery(text)) {
+    state.lookup = null;
+    return firstPage();
+  }
+  lookupTimer = setTimeout(async () => {
+    try {
+      const {ids} = await api('/api/participants/find', {query: text.trim()});
+      if ($('dashboard-filter').value === text) state.lookup = {text, ids: new Set(ids)};
+      message('page-error', '');
+    } catch (err) {
+      state.lookup = {text, ids: new Set()};
+      message('page-error', err.message);
+    }
+    firstPage();
+  }, 300);
+}
+
 function initFilters() {
-  $('dashboard-filter').addEventListener('input', firstPage);
+  $('dashboard-filter').addEventListener('input', searchChanged);
   for (const id of [...FILTERS, 'page-size']) $(id).addEventListener('change', firstPage);
   $('clear-filters').addEventListener('click', () => {
     $('dashboard-filter').value = '';
+    state.lookup = null;
     for (const id of FILTERS) $(id).value = '';
     firstPage();
   });
@@ -50,6 +113,7 @@ function initFilters() {
   $('pending-shortcut').addEventListener('click', event => {
     event.preventDefault();
     $('dashboard-filter').value = '';
+    state.lookup = null;
     for (const id of FILTERS) $(id).value = '';
     $('status-filter').value = 'guidance';
     firstPage();
@@ -182,6 +246,7 @@ if (await requireSession(['admin'])) {
   initTabs();
   initFilters();
   initTableEvents();
+  $('checkin-toggle').addEventListener('click', toggleCheckin);
   await Promise.all([refresh(), initTools(refresh)]);
   setInterval(refresh, 10000);
 }

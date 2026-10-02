@@ -1,16 +1,19 @@
 """Rotas da coordenação: painel detalhado, importação/exportação, guichês e alterações de participante."""
 import csv
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from .. import settings
+from ..auth import recent_count
 from ..csv_io import (event_logs_download, export_csv, import_text, participants_download,
                       participants_template_download)
 from ..db import connect, get_participant, participant_dict, pending_reasons, update_participant
 from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, configured_ranges, guiche_for,
                      letter_counts, priority_guiche, save_ranges, validate_priority_guiche)
-from ..participants import STATUS_STEPS, status_fields
+from ..lookup import cpf_key, email_key
+from ..participants import STATUS_STEPS, public_checkin_state, set_public_checkin, status_fields
 from .routes import ADMIN, route
 
 
@@ -20,6 +23,8 @@ def dashboard(req, user, data):
         rows = db.execute("SELECT * FROM participants ORDER BY name_key").fetchall()
         pending = db.execute("SELECT COUNT(*) FROM sheet_outbox WHERE delivered_at IS NULL").fetchone()[0]
         desks = available_guiches(db)
+        checkin = public_checkin_state(db)
+    alert_limit, alert_window = settings.rate_limit("alert_miss")
     for desk in desks:
         desk["total"] = sum(r["guiche"] == desk["id"] for r in rows)
     counts = {s: sum(r["status"] == s for r in rows) for s in
@@ -28,11 +33,39 @@ def dashboard(req, user, data):
                               "guidance_pending": sum(r["status"] not in ("registered", "completed")
                                                       and bool(pending_reasons(r)) for r in rows),
                               "sheet_pending": pending, "sheet_configured": bool(settings.SHEET_URL and settings.SHEET_SECRET),
-                              "desks": desks,
+                              "desks": desks, "public_checkin": checkin,
+                              # Buscas públicas sem resultado, de todas as origens: muitas podem ser alguém testando CPFs.
+                              "search_misses": {"count": recent_count("miss-all", "alert_miss"),
+                                                "alert": alert_limit, "minutes": alert_window // 60},
                               # Pagamento ou afiliação faltando em quem ainda não foi credenciado.
                               "registration_pending": sum(r["status"] != "completed" and bool(pending_reasons(r))
                                                           for r in rows),
                               "items": [participant_dict(r, private=True) for r in rows]})
+
+
+@route("POST", "/api/public-checkin", roles=ADMIN, forbidden="Somente a coordenação pode abrir ou fechar o pré-check-in.")
+def public_checkin(req, user, data):
+    if not isinstance(data.get("open"), bool):
+        return req.respond(400, {"error": "Informe se o pré-check-in fica aberto."})
+    with connect() as db:
+        state = set_public_checkin(db, data["open"], user["username"])
+    return req.respond(200, {"public_checkin": state})
+
+
+@route("POST", "/api/participants/find", roles=ADMIN)
+def find_participants(req, user, data):
+    """O painel não recebe CPF nem e-mail: para achar alguém por eles, compara as chaves aqui."""
+    query = str(data.get("query", "")).strip()
+    digits = re.sub(r"\D", "", query)
+    if re.fullmatch(r"[\d.\-\s]+", query) and len(digits) == 11:
+        column, value = "cpf_key", cpf_key(digits)
+    elif re.fullmatch(r"[^@\s]+@[^@\s]+", query):
+        column, value = "email_key", email_key(query)
+    else:
+        return req.respond(400, {"error": "Informe um CPF com 11 dígitos ou um e-mail."})
+    with connect() as db:
+        ids = [row["id"] for row in db.execute(f"SELECT id FROM participants WHERE {column}=?", (value,))]
+    return req.respond(200, {"ids": ids})
 
 
 @route("GET", "/api/participants/export", roles=ADMIN)

@@ -1,6 +1,17 @@
-# Sobe a aplicação com:            docker compose up -d --build
-# Com HTTPS automático (Caddy):    docker compose --profile https up -d --build
-# Veja a seção "Docker" do README.
+# Sobe a aplicação com:                                   docker compose up -d --build
+# Com HTTPS automático (Caddy + Let's Encrypt):           docker compose --profile https up -d --build
+# Atrás do proxy HTTPS da instituição, com HTTPS até aqui: docker compose --profile https-interno up -d --build
+# Use um perfil de Caddy ou o outro, nunca os dois. Veja a seção "Docker" do README.
+x-caddy: &caddy
+  image: caddy:2
+  restart: unless-stopped
+  depends_on:
+    - app
+  networks:
+    default:
+      # IP fixo: é o único endereço da rede do Docker em que a aplicação confia.
+      ipv4_address: ${CHECKIN_CADDY_IP:-172.31.250.10}
+
 services:
   app:
     build: .
@@ -9,23 +20,39 @@ services:
     env_file: .env
     environment:
       CHECKIN_SESSION_SECRET: ${CHECKIN_SESSION_SECRET:?defina CHECKIN_SESSION_SECRET no arquivo .env}
-      # De quem aceitar X-Forwarded-For: só dos proxies em CHECKIN_PROXY_IPS, quando definido
-      # (HTTPS feito em outra máquina); senão, da rede do compose (o Caddy do perfil "https"
-      # ou um proxy na própria máquina, que chega pelo gateway dessa rede).
-      CHECKIN_TRUSTED_PROXY: ${CHECKIN_PROXY_IPS:-${CHECKIN_DOCKER_SUBNET:-172.31.250.0/24}}
+      CHECKIN_LOOKUP_SECRET: ${CHECKIN_LOOKUP_SECRET:?defina CHECKIN_LOOKUP_SECRET no arquivo .env}
+      # De quem aceitar X-Forwarded-For: do Caddy deste compose e dos proxies em CHECKIN_PROXY_IPS.
+      CHECKIN_TRUSTED_PROXY: ${CHECKIN_CADDY_IP:-172.31.250.10} ${CHECKIN_PROXY_IPS:-}
     ports:
-      # Padrão: só na própria máquina. Com o HTTPS num proxy de outra máquina, defina
-      # CHECKIN_BIND com o IP desta máquina que o proxy alcança.
+      # Padrão: só na própria máquina. Com o HTTPS num proxy de outra máquina que repassa em
+      # HTTP, defina CHECKIN_BIND com o IP desta máquina que o proxy alcança.
       - "${CHECKIN_BIND:-127.0.0.1}:${CHECKIN_PORT:-8000}:8000"
     volumes:
       - dados:/data
 
-  caddy:
-    image: caddy:2
-    profiles: ["https"]
+  # Cópia do banco a cada hora, guardando as últimas 48, num volume separado. Protege contra
+  # erro de operação e arquivo corrompido; para perda do servidor, copie também para fora dele.
+  backup:
+    image: credenciamento-evento
     restart: unless-stopped
+    init: true
     depends_on:
       - app
+    env_file: .env
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        while true; do
+        python app.py backup "/backups/credenciamento-$$(date +%Y%m%d-%H%M%S).sqlite3" &&
+        ls -1t /backups/*.sqlite3 | tail -n +49 | xargs -r rm -f --;
+        sleep 3600; done
+    volumes:
+      - dados:/data
+      - backups:/backups
+
+  caddy:
+    <<: *caddy
+    profiles: ["https"]
     environment:
       CHECKIN_DOMAIN: ${CHECKIN_DOMAIN:-}
     ports:
@@ -37,6 +64,20 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  caddy-interno:
+    <<: *caddy
+    profiles: ["https-interno"]
+    environment:
+      CHECKIN_DOMAIN: ${CHECKIN_DOMAIN:-}
+      CHECKIN_SERVER_IP: ${CHECKIN_SERVER_IP:-}
+      CHECKIN_PROXY_IPS: ${CHECKIN_PROXY_IPS:-}
+    ports:
+      - "${CHECKIN_SERVER_IP:-0.0.0.0}:443:443"
+    volumes:
+      - ./docker/Caddyfile.interno:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 networks:
   default:
     ipam:
@@ -45,5 +86,6 @@ networks:
 
 volumes:
   dados:
+  backups:
   caddy_data:
   caddy_config:

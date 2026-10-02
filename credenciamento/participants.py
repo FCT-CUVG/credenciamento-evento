@@ -1,6 +1,6 @@
 """Regras do fluxo do participante: etapas da situação e ações da fila de busca e guichê."""
 from .common import now
-from .db import pending_reasons
+from .db import get_setting, pending_reasons, set_setting
 
 
 STATUS_STEPS = ("registered", "prechecked", "searching", "ready", "completed")
@@ -45,3 +45,15 @@ def queue_action_fields(action, user, row):
     if action == "undo_complete" and at_desk and row["status"] == "completed":
         return {"status": "ready", "completed_at": None}
     return None
+
+
+def public_checkin_state(db):
+    """O pré-check-in público começa fechado; a coordenação abre e fecha pelo painel."""
+    return get_setting(db, "public_checkin", {"open": False, "by": "", "at": ""})
+
+
+def set_public_checkin(db, is_open, actor):
+    state = {"open": bool(is_open), "by": actor, "at": now()}
+    set_setting(db, "public_checkin", state)
+    print(f"Pré-check-in público {'aberto' if is_open else 'fechado'} por {actor}.", flush=True)
+    return state

@@ -12,6 +12,7 @@ from . import settings
 from .common import normalize, now
 from .db import connect, get_participant, record_event, update_participant
 from .desks import configured_ranges, guiche_for, priority_guiche
+from .lookup import cpf_digits, cpf_key, email_key, is_key
 
 CSV_LOCK = threading.Lock()
 
@@ -28,7 +29,7 @@ def export_csv():
     """The local CSV is a restart-rebuilt mirror; SQLite remains the source of truth."""
     with CSV_LOCK, connect() as db:
         rows = db.execute("SELECT * FROM participants ORDER BY name_key").fetchall()
-        fields = ["id", "name", "badge_name", "email", "cpf", "affiliation", "paid", "priority", "guiche", "status",
+        fields = ["id", "name", "badge_name", "cpf_prefix", "affiliation", "paid", "priority", "guiche", "status",
                   "claimed_by", "prechecked_at", "claimed_at", "ready_at", "completed_at",
                   "updated_at", "revision"]
         temp = settings.CSV.with_suffix(".csv.tmp")
@@ -42,7 +43,9 @@ def export_csv():
         os.chmod(temp, 0o600)
         os.replace(temp, settings.CSV)
 
-PARTICIPANT_COLUMNS = ("id", "nome", "nome_cracha", "afiliacao", "email", "cpf", "pago", "prioridade", "guiche")
+# A exportação não tem CPF nem e-mail, só as chaves de busca: reimportada, mantém as mesmas pessoas.
+PARTICIPANT_COLUMNS = ("id", "nome", "nome_cracha", "afiliacao", "email_hash", "cpf_hash", "cpf_inicio",
+                       "pago", "prioridade", "guiche")
 
 PARTICIPANT_EXPORT_COLUMNS = PARTICIPANT_COLUMNS + ("situacao", "responsavel", "pre_checkin_em",
                                                       "busca_iniciada_em", "pronto_em", "retirado_em",
@@ -50,7 +53,7 @@ PARTICIPANT_EXPORT_COLUMNS = PARTICIPANT_COLUMNS + ("situacao", "responsavel", "
 
 PARTICIPANT_TEMPLATE_COLUMNS = ("nome", "nome_cracha", "afiliacao", "email", "cpf", "pago", "prioridade")
 
-EVENT_LOG_COLUMNS = ("evento_id", "participante_id", "nome", "nome_cracha", "email", "cpf", "guiche",
+EVENT_LOG_COLUMNS = ("evento_id", "participante_id", "nome", "nome_cracha", "guiche",
                      "acao", "responsavel", "data_hora")
 
 
@@ -63,7 +66,8 @@ def participants_download():
     writer.writeheader()
     for row in rows:
         values = {"id": row["id"], "nome": row["name"], "nome_cracha": row["badge_name"],
-                  "afiliacao": row["affiliation"], "email": row["email"], "cpf": row["cpf"],
+                  "afiliacao": row["affiliation"], "email_hash": row["email_key"],
+                  "cpf_hash": row["cpf_key"], "cpf_inicio": row["cpf_prefix"],
                   "pago": row["paid"], "prioridade": row["priority"], "guiche": row["guiche"],
                   "situacao": row["status"], "responsavel": row["claimed_by"],
                   "pre_checkin_em": row["prechecked_at"], "busca_iniciada_em": row["claimed_at"],
@@ -86,7 +90,7 @@ def event_logs_download():
     with connect() as db:
         rows = db.execute("""
             SELECT e.id AS evento_id, e.participant_id AS participante_id, p.name AS nome,
-                   p.badge_name AS nome_cracha, p.email, p.cpf, p.guiche,
+                   p.badge_name AS nome_cracha, p.guiche,
                    e.action AS acao, e.actor AS responsavel, e.occurred_at AS data_hora
             FROM events e
             LEFT JOIN participants p ON p.id=e.participant_id
@@ -114,11 +118,12 @@ def import_text(content, suffix, actor="system"):
             records = records.get("participants", [])
     elif suffix == ".csv":
         content = content.lstrip("\ufeff")
-        required = {"nome", "email"}
         readers = [csv.DictReader(io.StringIO(content, newline=""), delimiter=delimiter)
                    for delimiter in (",", ";", "\t")]
+        # O e-mail vem em texto (lista original) ou como chave (arquivo exportado pelo painel).
         reader = next((candidate for candidate in readers
-                       if required.issubset({field.strip() for field in candidate.fieldnames or []})), None)
+                       if {field.strip() for field in candidate.fieldnames or []} & {"email", "email_hash"}
+                       and "nome" in {field.strip() for field in candidate.fieldnames or []}), None)
         if reader is None:
             raise ValueError("Cabeçalho CSV inválido: use nome e email como colunas. "
                              "Separe as colunas por vírgula, ponto e vírgula ou tabulação.")
@@ -159,14 +164,30 @@ def import_text(content, suffix, actor="system"):
             seen_ids.add(pid)
         name, badge_name = value("nome"), value("nome_cracha")
         affiliation, email, cpf = value("afiliacao"), value("email"), value("cpf")
-        if not name or not email:
+        if not name or not (email or value("email_hash")):
             raise ValueError(f"Linha {n}: nome e email são obrigatórios.")
         if not badge_name:
             name_parts = name.split()
             badge_name = name_parts[0] if len(name_parts) == 1 else f"{name_parts[0]} {name_parts[-1]}"
         if cpf and not re.fullmatch(r"(?:\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2})", cpf):
             raise ValueError(f"Linha {n}: cpf deve ter 11 dígitos ou usar o formato xxx.xxx.xxx-xx.")
-        cpf = re.sub(r"\D", "", cpf)
+        if email and "@" not in email:
+            raise ValueError(f"Linha {n}: email inválido.")
+        # Só as chaves de busca são guardadas; CPF e e-mail em texto param aqui.
+        if email:
+            mail_key = email_key(email)
+        elif is_key(value("email_hash").lower()):
+            mail_key = value("email_hash").lower()
+        else:
+            raise ValueError(f"Linha {n}: email_hash inválido.")
+        if cpf:
+            id_key, cpf_prefix = cpf_key(cpf), cpf_digits(cpf)[:3]
+        elif value("cpf_hash"):
+            id_key, cpf_prefix = value("cpf_hash").lower(), value("cpf_inicio")
+            if not is_key(id_key) or not re.fullmatch(r"\d{3}", cpf_prefix):
+                raise ValueError(f"Linha {n}: cpf_hash ou cpf_inicio inválido.")
+        else:
+            id_key, cpf_prefix = "", ""
         paid_raw, priority_raw = value("pago"), value("prioridade")
         if paid_raw not in ("", "0", "1"):
             raise ValueError(f"Linha {n}: pago deve ser 0 ou 1.")
@@ -186,40 +207,43 @@ def import_text(content, suffix, actor="system"):
                 automatic = ""
             # An exported file repeats the computed desk; only a different value is a manual choice.
             guiche, manual = explicit or automatic, int(bool(explicit) and explicit != automatic)
-        key = (normalize(name), email.casefold())
-        if len(key[0]) < 3 or "@" not in email or not guiche:
+        key = (normalize(name), mail_key)
+        if len(key[0]) < 3 or not guiche:
             raise ValueError(f"Linha {n}: nome e email devem ser válidos; guiche deve ser informado ou calculável.")
         if key in seen:
             raise ValueError(f"Linha {n}: nome e e-mail duplicados.")
         seen.add(key)
-        prepared.append((pid, name, badge_name, key[0], email, key[1], cpf, affiliation, paid, priority, guiche, manual))
+        prepared.append((pid, name, badge_name, key[0], key[1], id_key, cpf_prefix, affiliation, paid, priority,
+                         guiche, manual))
     count = 0
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        for pid, name, badge_name, name_key, email, email_key, cpf, affiliation, paid, priority, guiche, manual in prepared:
+        for pid, name, badge_name, name_key, mail_key, id_key, cpf_prefix, affiliation, paid, priority, guiche, manual in prepared:
             old_by_id = get_participant(db, pid) if pid else None
             old_by_key = db.execute("SELECT * FROM participants WHERE name_key=? AND email_key=?",
-                                    (name_key, email_key)).fetchone()
+                                    (name_key, mail_key)).fetchone()
             if old_by_id and old_by_key and old_by_id["id"] != old_by_key["id"]:
                 raise ValueError(f"{name}: id e nome/e-mail identificam pessoas diferentes.")
             old = old_by_id or old_by_key
             if old:
                 if any(old[k] != v for k, v in (("name", name), ("name_key", name_key),
-                                                  ("badge_name", badge_name), ("email", email), ("email_key", email_key),
-                                                  ("cpf", cpf), ("affiliation", affiliation), ("paid", paid),
+                                                  ("badge_name", badge_name), ("email_key", mail_key),
+                                                  ("cpf_key", id_key), ("cpf_prefix", cpf_prefix),
+                                                  ("affiliation", affiliation), ("paid", paid),
                                                   ("priority", priority), ("guiche", guiche))):
                     if old["guiche"] != guiche and old["status"] in ("searching", "ready", "completed"):
                         raise ValueError(f"Não é possível mudar o guichê de {name}: busca ou retirada já iniciada.")
                     update_participant(db, old["id"], "import_update", actor, name=name, name_key=name_key,
-                                       badge_name=badge_name, email=email, email_key=email_key, cpf=cpf,
+                                       badge_name=badge_name, email_key=mail_key, cpf_key=id_key,
+                                       cpf_prefix=cpf_prefix,
                                        affiliation=affiliation, paid=paid, priority=priority, guiche=guiche)
                     count += 1
                 if old["guiche_manual"] != manual:
                     db.execute("UPDATE participants SET guiche_manual=? WHERE id=?", (manual, old["id"]))
             else:
                 pid = pid or str(uuid.uuid4())
-                db.execute("INSERT INTO participants(id,name,badge_name,name_key,email,email_key,cpf,affiliation,paid,priority,guiche,guiche_manual,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (pid, name, badge_name, name_key, email, email_key, cpf, affiliation, paid, priority, guiche, manual, now()))
+                db.execute("INSERT INTO participants(id,name,badge_name,name_key,email_key,cpf_key,cpf_prefix,affiliation,paid,priority,guiche,guiche_manual,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (pid, name, badge_name, name_key, mail_key, id_key, cpf_prefix, affiliation, paid, priority, guiche, manual, now()))
                 record_event(db, get_participant(db, pid), "import", actor)
                 count += 1
         db.commit()

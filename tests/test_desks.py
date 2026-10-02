@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from credenciamento import csv_io, desks, settings
+from credenciamento import csv_io, desks, lookup, settings
 from credenciamento import db as database
 from credenciamento.bootstrap import init_db
 from support import CredenciamentoTestCase
@@ -39,7 +39,7 @@ class DesksTest(CredenciamentoTestCase):
             {"nome": "Paula Explícita", "email": "paula@example.org", "afiliacao": "Instituto P",
              "pago": 1, "prioridade": 1, "guiche": "3"}]), ".json")
         with database.connect() as db:
-            desks = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+            desks = self.by_email("guiche")
         self.assertEqual((desks["zeca@example.org"], desks["paula@example.org"], desks["ana@example.org"]), ("P", "P", "1"))
         self.assertIn({"id": "P", "ranges": [], "priority": True},
                       self.request("/api/guiches", cookie=admin[0])[1]["guiches"])
@@ -63,14 +63,14 @@ class DesksTest(CredenciamentoTestCase):
         csv_io.import_text(json.dumps([{"nome": "Yara Prioritária", "email": "yara@example.org", "pago": 1,
                                      "afiliacao": "Instituto Y", "prioridade": 1}]), ".json")
         with database.connect() as db:
-            self.assertEqual(db.execute("SELECT guiche FROM participants WHERE email='yara@example.org'").fetchone()[0], "5")
+            self.assertEqual(db.execute("SELECT guiche FROM participants WHERE email_key=?", (lookup.email_key("yara@example.org"),)).fetchone()[0], "5")
         code, updated, _ = self.request("/api/guiches/config", {"ranges": config["ranges"]}, *admin)
         self.assertEqual(updated["priority_guiche"], "")
 
     def test_admin_toggles_priority_and_desk_follows(self):
         admin = self.login("admin")
         with database.connect() as db:
-            pid = db.execute("SELECT id FROM participants WHERE email='bruno@example.org'").fetchone()[0]
+            pid = db.execute("SELECT id FROM participants WHERE email_key=?", (lookup.email_key("bruno@example.org"),)).fetchone()[0]
         self.assertEqual(self.request("/api/participants/priority", {"id": pid, "priority": 1}, *self.login("vol1"))[0], 403)
         self.assertEqual(self.request("/api/participants/priority", {"id": pid, "priority": 2}, *admin)[0], 400)
         code, updated, _ = self.request("/api/participants/priority", {"id": pid, "priority": 1}, *admin)
@@ -97,12 +97,12 @@ class DesksTest(CredenciamentoTestCase):
             {"nome": "Zé Prioridade", "email": "ze@example.org", "afiliacao": "Z", "pago": 1, "prioridade": 1}]), ".json")
         self.request("/api/checkin", {"cpf": "12345678901"})
         with database.connect() as db:
-            ana = db.execute("SELECT id FROM participants WHERE email='ana@example.org'").fetchone()[0]
+            ana = db.execute("SELECT id FROM participants WHERE email_key=?", (lookup.email_key("ana@example.org"),)).fetchone()[0]
         self.assertEqual(self.request("/api/action/claim", {"id": ana}, *self.login("vol1"))[0], 200)
 
         def desks():
             with database.connect() as db:
-                people = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+                people = self.by_email("guiche")
                 people["att1"] = db.execute("SELECT guiche FROM users WHERE username='att1'").fetchone()[0]
             return people
 
@@ -126,14 +126,14 @@ class DesksTest(CredenciamentoTestCase):
             actions = {r[0] for r in db.execute("SELECT action FROM events WHERE actor='admin'")}
         self.assertTrue({"guiche_rename", "guiche_reassign"} <= actions)
         with database.connect() as db:
-            db.execute("UPDATE participants SET guiche='2', guiche_manual=1 WHERE email='ze@example.org'")
-            db.execute("UPDATE participants SET priority=1 WHERE email='ze@example.org'")
+            db.execute("UPDATE participants SET guiche='2', guiche_manual=1 WHERE email_key=?", (lookup.email_key("ze@example.org"),))
+            db.execute("UPDATE participants SET priority=1 WHERE email_key=?", (lookup.email_key("ze@example.org"),))
         self.request("/api/guiches/config", {"ranges": moved, "priority_guiche": "P"}, *admin)
         self.assertEqual(desks()["ze@example.org"], "P")
         exported = csv_io.participants_download().decode("utf-8-sig")
         csv_io.import_text(exported, ".csv")
         with database.connect() as db:
-            manual = dict(db.execute("SELECT email, guiche_manual FROM participants").fetchall())
+            manual = self.by_email("guiche_manual")
         self.assertEqual((manual["carla@example.org"], manual["diego@example.org"], manual["ana@example.org"]), (1, 0, 0))
 
     def test_stale_priority_desk_merges_into_current_priority_desk(self):
@@ -144,11 +144,11 @@ class DesksTest(CredenciamentoTestCase):
         with database.connect() as db:
             # Situação deixada por uma renomeação antiga: prioritários em "Prioridade", configuração em "P".
             db.execute("UPDATE participants SET guiche='Prioridade', guiche_manual=1 WHERE priority=1")
-            db.execute("UPDATE participants SET status='completed' WHERE email='yara@example.org'")
+            db.execute("UPDATE participants SET status='completed' WHERE email_key=?", (lookup.email_key("yara@example.org"),))
             db.execute("UPDATE users SET guiche='Prioridade' WHERE username='att1'")
         init_db()
         with database.connect() as db:
-            desks = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+            desks = self.by_email("guiche")
             attendant = db.execute("SELECT guiche FROM users WHERE username='att1'").fetchone()[0]
         self.assertEqual((desks["zeca@example.org"], desks["yara@example.org"], desks["carla@example.org"], attendant),
                          ("P", "P", "7", "P"))
@@ -183,7 +183,7 @@ class DesksTest(CredenciamentoTestCase):
         csv_io.import_text(json.dumps(people), ".json")
         with database.connect() as db:
             # Quem já retirou o kit conta na divisão, mas não muda de guichê ao salvar.
-            db.execute("UPDATE participants SET status='completed' WHERE email LIKE 'maria%' AND email < 'maria3'")
+            db.execute("UPDATE participants SET status='completed' WHERE name IN ('Maria Pessoa 0', 'Maria Pessoa 1', 'Maria Pessoa 2')")
         admin = self.login("admin")
         config = self.request("/api/guiches/config", cookie=admin[0])[1]
         # Ana e Bruno vêm da base dos testes; prioridade e guichê manual não contam.
@@ -201,7 +201,7 @@ class DesksTest(CredenciamentoTestCase):
         code, saved, _ = self.request("/api/guiches/config", {"ranges": proposal["ranges"], "priority_guiche": "P"}, *admin)
         self.assertEqual((code, saved["ranges"][0]), (200, {"from": "A", "to": "L", "guiche": "1"}))
         with database.connect() as db:
-            placed = dict(db.execute("SELECT email, guiche FROM participants").fetchall())
+            placed = self.by_email("guiche")
         self.assertEqual((placed["carlos0@example.org"], placed["maria4@example.org"], placed["maria0@example.org"],
                           placed["zeca@example.org"], placed["zilda@example.org"]), ("1", "2", "3", "P", "9"))
 

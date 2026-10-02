@@ -5,7 +5,7 @@ import json
 import unittest
 from pathlib import Path
 
-from credenciamento import common, csv_io
+from credenciamento import common, csv_io, lookup
 from credenciamento import db as database
 from support import CredenciamentoTestCase
 
@@ -21,14 +21,14 @@ class ImportExportTest(CredenciamentoTestCase):
         missing_badge["cpf"] = ""
         csv_io.import_text(json.dumps([missing_badge]), ".json")
         with database.connect() as db:
-            row = db.execute("SELECT badge_name, affiliation, cpf FROM participants WHERE email='carla@example.org'").fetchone()
+            row = db.execute("SELECT badge_name, affiliation, cpf_key FROM participants WHERE email_key=?", (lookup.email_key("carla@example.org"),)).fetchone()
         self.assertEqual(tuple(row), ("Carla Souza", "", ""))
         invalid_cpf = dict(required, cpf="123")
         with self.assertRaisesRegex(ValueError, "cpf deve ter 11"):
             csv_io.import_text(json.dumps([invalid_cpf]), ".json")
         csv_io.import_text(json.dumps([{"nome": "Madonna", "email": "madonna@example.org"}]), ".json")
         with database.connect() as db:
-            row = db.execute("SELECT badge_name FROM participants WHERE email='madonna@example.org'").fetchone()
+            row = db.execute("SELECT badge_name FROM participants WHERE email_key=?", (lookup.email_key("madonna@example.org"),)).fetchone()
         self.assertEqual(row[0], "Madonna")
 
     def test_import_csv_accepts_spreadsheet_delimiters_and_skips_empty_rows(self):
@@ -44,7 +44,7 @@ class ImportExportTest(CredenciamentoTestCase):
             csv_io.import_text("nome;afiliacao;pago;cpf\nCarla;Instituto C;1;\n", ".csv")
         csv_io.import_text("nome;email\nJoana da Silva;joana@example.org\n", ".csv")
         with database.connect() as db:
-            row = db.execute("SELECT badge_name, affiliation FROM participants WHERE email='joana@example.org'").fetchone()
+            row = db.execute("SELECT badge_name, affiliation FROM participants WHERE email_key=?", (lookup.email_key("joana@example.org"),)).fetchone()
         self.assertEqual(tuple(row), ("Joana Silva", ""))
 
     def test_reimport_changes_guiche_preserves_status(self):
@@ -64,14 +64,14 @@ class ImportExportTest(CredenciamentoTestCase):
         self.assertEqual(csv_io.import_text(json.dumps([original]), ".json"), (1, 1))
         with database.connect() as db:
             pid = db.execute("SELECT id FROM participants WHERE name_key=? AND email_key=?",
-                             (common.normalize(original["nome"]), original["email"].casefold())).fetchone()[0]
+                             (common.normalize(original["nome"]), lookup.email_key(original["email"]))).fetchone()[0]
 
         updated = dict(original, id=pid, nome="Cárla Oliveira", email="Carla.Nova@Example.org")
         self.assertEqual(csv_io.import_text(json.dumps([updated]), ".json"), (1, 1))
         with database.connect() as db:
-            rows = db.execute("SELECT id, name, email FROM participants WHERE name_key=? AND email_key=?",
-                              (common.normalize(updated["nome"]), updated["email"].casefold())).fetchall()
-        self.assertEqual([tuple(row) for row in rows], [(pid, updated["nome"], updated["email"])])
+            rows = db.execute("SELECT id, name FROM participants WHERE name_key=? AND email_key=?",
+                              (common.normalize(updated["nome"]), lookup.email_key(updated["email"]))).fetchall()
+        self.assertEqual([tuple(row) for row in rows], [(pid, updated["nome"])])
         code, found, _ = self.request("/api/checkin", {"email": "Carla.Nova@example.org"})
         self.assertEqual((code, found["name"]), (200, "C***a O******a"))
 
@@ -97,6 +97,10 @@ class ImportExportTest(CredenciamentoTestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(set(rows[0]), set(csv_io.PARTICIPANT_EXPORT_COLUMNS))
         self.assertIn("situacao", rows[0])
+        # Nem CPF nem e-mail saem do sistema: só as chaves de busca e o início do CPF.
+        self.assertNotIn("ana@example.org", payload.decode("utf-8-sig"))
+        self.assertNotIn("12345678901", payload.decode("utf-8-sig"))
+        self.assertEqual({row["cpf_inicio"] for row in rows}, {"123", "987"})
 
         code, payload, headers = self.request("/api/events/export", cookie=admin[0], json_response=False)
         self.assertEqual(code, 200)
@@ -106,7 +110,7 @@ class ImportExportTest(CredenciamentoTestCase):
         self.assertEqual({row["acao"] for row in logs}, {"import"})
 
         self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
-        original_id = next(row["id"] for row in rows if row["email"] == "ana@example.org")
+        original_id = next(row["id"] for row in rows if row["email_hash"] == lookup.email_key("ana@example.org"))
         for row in rows:
             if row["id"] == original_id:
                 row["nome"] = "Ana Silva Nova"

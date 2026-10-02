@@ -10,7 +10,7 @@ WORKDIR /app
 
 # O código fica com o root (somente leitura para o serviço); o que muda vai para /data.
 RUN useradd --system --uid 10001 --no-create-home --home-dir /app --shell /usr/sbin/nologin credenciamento \
-    && install -d -o credenciamento -g credenciamento -m 700 /data
+    && install -d -o credenciamento -g credenciamento -m 700 /data /backups
 
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY . .
