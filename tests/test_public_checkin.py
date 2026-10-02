@@ -2,7 +2,7 @@
 import json
 import unittest
 
-from credenciamento import csv_io
+from credenciamento import csv_io, lookup, settings
 from credenciamento import db as database
 from support import CredenciamentoTestCase
 
@@ -14,7 +14,7 @@ class PublicCheckinTest(CredenciamentoTestCase):
         code, done, _ = self.request("/api/checkin", {"cpf": "123.456.789-01"})
         self.assertEqual((code, done), (200, done_ana))
         with database.connect() as db:
-            self.assertEqual(db.execute("SELECT status FROM participants WHERE email='ana@example.org'").fetchone()[0],
+            self.assertEqual(db.execute("SELECT status FROM participants WHERE email_key=?", (lookup.email_key("ana@example.org"),)).fetchone()[0],
                              "prechecked")
         # Repetir a busca (ou buscar pelo e-mail) mostra o mesmo guichê sem registrar de novo.
         code, done, _ = self.request("/api/checkin", {"email": " ANA@example.org "})
@@ -58,15 +58,16 @@ class PublicCheckinTest(CredenciamentoTestCase):
         code, result, _ = self.request("/api/checkin", {"cpf": "12345678901"})
         self.assertEqual((code, result), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": True}))
         with database.connect() as db:
-            row = db.execute("SELECT status, prechecked_at FROM participants WHERE email='ana@example.org'").fetchone()
-            event = db.execute("SELECT action FROM events WHERE action='precheck_pending' AND participant_id=(SELECT id FROM participants WHERE email='ana@example.org')").fetchone()
+            row = db.execute("SELECT status, prechecked_at FROM participants WHERE email_key=?", (lookup.email_key("ana@example.org"),)).fetchone()
+            event = db.execute("SELECT action FROM events WHERE action='precheck_pending' AND participant_id=(SELECT id FROM participants WHERE email_key=?)",
+                               (lookup.email_key("ana@example.org"),)).fetchone()
         self.assertEqual(row["status"], "prechecked")
         self.assertTrue(row["prechecked_at"])
         self.assertEqual(event["action"], "precheck_pending")
         self.assertEqual(self.request("/pendencias", json_response=False)[0], 404)
         admin = self.login("admin")
         with database.connect() as db:
-            pid = db.execute("SELECT id FROM participants WHERE email='ana@example.org'").fetchone()[0]
+            pid = db.execute("SELECT id FROM participants WHERE email_key=?", (lookup.email_key("ana@example.org"),)).fetchone()[0]
         self.assertEqual(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"], [])
         self.assertEqual(self.request("/api/dashboard/summary")[1]["arrived"], 1)
         self.assertEqual(self.request("/api/dashboard", cookie=admin[0])[1]["guidance_pending"], 1)
@@ -85,6 +86,51 @@ class PublicCheckinTest(CredenciamentoTestCase):
         # Resolvida a pendência, o responsável credencia direto pelo painel detalhado.
         code, updated, _ = self.request("/api/participants/status", {"id": pid, "status": "completed"}, *admin)
         self.assertEqual((code, updated["item"]["status"]), (200, "completed"))
+
+    def test_public_checkin_opens_and_closes_from_the_dashboard(self):
+        admin = self.login("admin")
+        self.assertEqual(self.request("/api/public-checkin", {"open": False}, *self.login("vol1"))[0], 403)
+        for invalid in ({}, {"open": "0"}):
+            self.assertEqual(self.request("/api/public-checkin", invalid, *admin)[0], 400)
+        code, result, _ = self.request("/api/public-checkin", {"open": False}, *admin)
+        self.assertEqual((code, result["public_checkin"]["open"], result["public_checkin"]["by"]), (200, False, "admin"))
+        self.assertFalse(self.request("/api/event")[1]["checkin_open"])
+        code, closed, _ = self.request("/api/checkin", {"cpf": "12345678901"})
+        self.assertEqual((code, closed["closed"]), (403, True))
+        with database.connect() as db:
+            self.assertEqual(db.execute("SELECT status FROM participants WHERE name_key='ana silva'").fetchone()[0],
+                             "registered")
+        self.assertFalse(self.request("/api/dashboard", cookie=admin[0])[1]["public_checkin"]["open"])
+        self.request("/api/public-checkin", {"open": True}, *admin)
+        self.assertTrue(self.request("/api/event")[1]["checkin_open"])
+        self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
+
+    def test_only_searches_without_result_are_limited_and_counted_for_the_alert(self):
+        settings.LIMITS.update(search="100/1", search_miss="3/10", alert_miss="2/10")
+        # Quem encontra a inscrição não gasta o limite de erros, mesmo repetindo a busca.
+        for _ in range(5):
+            self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
+        for cpf in ("00000000001", "00000000002", "00000000003"):
+            self.assertEqual(self.request("/api/checkin", {"cpf": cpf})[0], 404)
+        # Depois de três erros, o mesmo IP fica bloqueado por um tempo, até para uma busca certa.
+        self.assertEqual(self.request("/api/checkin", {"cpf": "98765432100"})[0], 429)
+        misses = self.request("/api/dashboard", cookie=self.login("admin")[0])[1]["search_misses"]
+        self.assertEqual(misses, {"count": 3, "alert": 2, "minutes": 10})
+        settings.LIMITS.update(search="2/1", search_miss="20/10")
+        self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 429)
+
+    def test_dashboard_finds_people_by_cpf_or_email_without_receiving_them(self):
+        admin = self.login("admin")
+        items = self.request("/api/dashboard", cookie=admin[0])[1]["items"]
+        self.assertFalse(any("email" in item or "cpf" in item for item in items))
+        self.assertEqual({(item["cpf_prefix"], item["has_cpf"]) for item in items}, {("123", True), ("987", True)})
+        ana = self.pid_by_email("ana@example.org")
+        for query in ("123.456.789-01", "12345678901", " ANA@example.org "):
+            code, found, _ = self.request("/api/participants/find", {"query": query}, *admin)
+            self.assertEqual((code, found["ids"]), (200, [ana]), query)
+        self.assertEqual(self.request("/api/participants/find", {"query": "ninguem@example.org"}, *admin)[1]["ids"], [])
+        self.assertEqual(self.request("/api/participants/find", {"query": "Ana"}, *admin)[0], 400)
+        self.assertEqual(self.request("/api/participants/find", {"query": "12345678901"}, *self.login("vol1"))[0], 403)
 
 
 if __name__ == "__main__":

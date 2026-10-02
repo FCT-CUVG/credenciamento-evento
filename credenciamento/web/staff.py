@@ -1,6 +1,7 @@
 """Rotas da equipe: guichês, filas e ações de busca e retirada."""
 from urllib.parse import parse_qs, urlparse
 
+from ..auth import end_session
 from ..csv_io import export_csv
 from ..db import connect, get_participant, participant_dict, update_participant
 from ..desks import available_guiches, priority_guiche
@@ -43,6 +44,8 @@ def queue(req, user, data):
 
 @route("POST", "/api/logout", roles=STAFF)
 def logout(req, user, data):
+    with connect() as db:
+        end_session(db, req.session_token)
     return req.respond(200, {"ok": True}, {"Set-Cookie": "session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"})
 
 

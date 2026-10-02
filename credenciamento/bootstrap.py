@@ -6,8 +6,12 @@ from .desks import apply_desk_config, configured_ranges, mark_manual_desks, prio
 
 def init_db():
     with connect() as db:
-        if "guiche_manual" in create_schema(db):
+        added = create_schema(db)
+        if "guiche_manual" in added:
             mark_manual_desks(db)
+    if "lookup_keys" in added:
+        # O espelho CSV antigo tinha CPF e e-mail em texto: reescreve já, sem eles.
+        export_csv()
     try:
         ranges = validate_ranges(configured_ranges())
     except ValueError:

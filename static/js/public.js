@@ -27,7 +27,10 @@ const translations = {
     notFoundTitle: 'REGISTRATION NOT FOUND',
     notFoundText: 'Check the CPF or e-mail and search again. If you still can\'t find it, please find a volunteer or go to the check-in desk.',
     ambiguousText: 'More than one registration uses this e-mail. Search with your CPF or find a volunteer for help.',
-    notFoundRetry: 'Search again'
+    notFoundRetry: 'Search again',
+    closedTitle: 'PRE-CHECK-IN NOT OPEN YET',
+    closedText: 'Online pre-check-in opens when the check-in desks start. Please come back later or find a volunteer.',
+    closedRetry: 'Try again'
   },
   'pt-BR': {
     brand: 'Credenciamento',
@@ -54,7 +57,10 @@ const translations = {
     notFoundTitle: 'INSCRIÇÃO NÃO ENCONTRADA',
     notFoundText: 'Confira o CPF ou o e-mail e busque novamente. Se ainda assim não encontrar, procure um voluntário ou o atendimento.',
     ambiguousText: 'Há mais de uma inscrição com este e-mail. Busque pelo CPF ou procure um voluntário.',
-    notFoundRetry: 'Buscar novamente'
+    notFoundRetry: 'Buscar novamente',
+    closedTitle: 'PRÉ-CHECK-IN AINDA NÃO ABERTO',
+    closedText: 'O pré-check-in pelo celular abre quando o credenciamento começar. Volte mais tarde ou procure um voluntário.',
+    closedRetry: 'Tentar novamente'
   }
 };
 
@@ -70,7 +76,7 @@ let language = ['en', 'pt-BR'].includes(store.get('language')) ? store.get('lang
 let desk = null, errorState = null, notFound = null, useEmail = false;
 
 function show(id) {
-  for (const key of ['public-search', 'public-done', 'public-pending', 'public-notfound']) {
+  for (const key of ['public-search', 'public-done', 'public-pending', 'public-notfound', 'public-closed']) {
     $(key).classList.toggle('hidden', key !== id);
   }
 }
@@ -104,7 +110,7 @@ function renderNotFound() {
 
 function errorText(err) {
   if (language === 'pt-BR') return err.message;
-  if (err.status === 429) return 'Too many attempts. Please wait a minute and try again.';
+  if (err.status === 429) return 'Too many attempts. Please wait a few minutes and try again.';
   if (err.status === 400) return useEmail ? 'Enter the e-mail used in your registration.' : 'Enter a valid CPF with 11 digits.';
   return 'Something went wrong. Please try again.';
 }
@@ -182,7 +188,9 @@ function init() {
       store.set('result', result);
       showResult(result);
     } catch (err) {
-      if (err.status === 404 || err.status === 409) {
+      if (err.status === 403 && err.data?.closed) {
+        show('public-closed');
+      } else if (err.status === 404 || err.status === 409) {
         notFound = err.status;
         renderNotFound();
         show('public-notfound');
@@ -215,10 +223,18 @@ function init() {
     cpfInput.focus();
   };
   for (const id of ['done-retry', 'pending-retry']) $(id).addEventListener('click', retry);
+  // Fechado: tenta de novo consultando se a coordenação já abriu o pré-check-in.
+  $('closed-retry').addEventListener('click', async () => {
+    await loadEventConfig();
+    if (eventInfo.checkinOpen) retry();
+  });
 
   const saved = store.get('result');
   if (saved && typeof saved.name === 'string' && Date.now() - saved.saved_at < RESULT_TTL) showResult(saved);
-  else store.remove('result');
+  else {
+    store.remove('result');
+    if (!eventInfo.checkinOpen) show('public-closed');
+  }
 }
 
 await loadEventConfig();

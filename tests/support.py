@@ -8,13 +8,20 @@ from email.message import Message
 from email.parser import Parser
 from pathlib import Path
 
-from credenciamento import auth, csv_io, settings
+from credenciamento import auth, csv_io, lookup, settings
 from credenciamento import db as database
 from credenciamento.bootstrap import init_db
+from credenciamento.participants import set_public_checkin
 from credenciamento.web.server import App
 
 # Configurações trocadas em cada teste e restauradas no tearDown.
-PATCHED_SETTINGS = ("DATA", "DB", "CSV", "SECRET", "SHEET_URL", "SHEET_SECRET", "RANGES")
+PATCHED_SETTINGS = ("DATA", "DB", "CSV", "SECRET", "LOOKUP_SECRET", "SHEET_URL", "SHEET_SECRET", "RANGES",
+                    "LIMITS")
+
+
+class ByEmail(dict):
+    def __getitem__(self, email):
+        return super().__getitem__(lookup.email_key(email) if "@" in email else email)
 
 
 class CredenciamentoTestCase(unittest.TestCase):
@@ -25,6 +32,8 @@ class CredenciamentoTestCase(unittest.TestCase):
         settings.DB = settings.DATA / "credenciamento.sqlite3"
         settings.CSV = settings.DATA / "participantes.csv"
         settings.SECRET = b"a-test-secret-that-is-longer-than-32-characters"
+        settings.LOOKUP_SECRET = b"a-test-lookup-secret-longer-than-32-characters"
+        settings.LIMITS = dict(settings.LIMITS)
         settings.SHEET_URL = ""
         settings.SHEET_SECRET = ""
         auth.RATE.clear()
@@ -48,6 +57,7 @@ class CredenciamentoTestCase(unittest.TestCase):
                 salt = "00" * 16
                 db.execute("INSERT INTO users VALUES (?,?,?,?,?)",
                            (username, salt, auth.password_hash("strong-password", salt), role, guiche))
+            set_public_checkin(db, True, "system")
 
     def tearDown(self):
         for name, value in self.original_settings.items():
@@ -81,6 +91,15 @@ class CredenciamentoTestCase(unittest.TestCase):
         first, rest = head.decode().split("\r\n", 1)
         parsed = Parser().parsestr(rest)
         return int(first.split()[1]), json.loads(payload) if json_response else payload, parsed
+    def by_email(self, column):
+        """Valores de uma coluna indexados pelo e-mail (o banco só guarda a chave do e-mail)."""
+        with database.connect() as db:
+            return ByEmail(db.execute(f"SELECT email_key, {column} FROM participants").fetchall())
+
+    def pid_by_email(self, email):
+        with database.connect() as db:
+            return db.execute("SELECT id FROM participants WHERE email_key=?", (lookup.email_key(email),)).fetchone()[0]
+
     def login(self, username):
         code, _, headers = self.request("/api/login", {"username": username, "password": "strong-password"})
         self.assertEqual(code, 200)

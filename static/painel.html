@@ -38,6 +38,14 @@
         <p class="status-legend-note"><span class="step step-done" aria-hidden="true">IN</span>Verde claro: etapa já concluída. OP aparece no lugar de AB quando a pessoa chegou com pagamento ou afiliação pendente. Clique numa etapa da tabela para mudar a situação.</p>
       </aside>
     </div>
+    <section class="checkin-control" aria-labelledby="checkin-control-title">
+      <div>
+        <h2 id="checkin-control-title">Pré-check-in pelo celular</h2>
+        <p id="checkin-state" class="checkin-state">—</p>
+      </div>
+      <button class="button" id="checkin-toggle" type="button" disabled>—</button>
+    </section>
+    <p id="misses-alert" class="alert hidden" role="alert"></p>
     <div class="stats">
       <div class="stat"><strong id="stat-total">—</strong><span>Inscritos</span></div>
       <div class="stat"><strong id="stat-prechecked">—</strong><span>Chegaram ao evento</span></div>
@@ -57,7 +65,7 @@
       <a href="#guiches-tools-title">Configurar guichês</a>
     </div>
     <div class="toolbar">
-      <input id="dashboard-filter" class="search-input" type="search" placeholder="Buscar por nome, e-mail, CPF, afiliação ou guichê" aria-label="Buscar participantes">
+      <input id="dashboard-filter" class="search-input" type="search" placeholder="Buscar por nome, afiliação, guichê, CPF ou e-mail completo" aria-label="Buscar participantes">
       <div class="dashboard-filters">
         <label class="filter">Situação
           <select id="status-filter" class="filter-select">
@@ -137,6 +145,7 @@
             <li><code>afiliacao</code> - opcional; se vazia, a chegada é registrada e o participante recebe orientação antes da busca do kit</li>
             <li><code>email</code> - obrigatório, texto</li>
             <li><code>cpf</code> - opcional, 11 dígitos ou <code>xxx.xxx.xxx-xx</code> quando preenchido</li>
+            <li>CPF e e-mail não ficam guardados: o sistema guarda só uma chave para reconhecê-los na busca e os 3 primeiros dígitos do CPF para conferência no guichê. Guarde a lista original fora do sistema. O CSV exportado traz as chaves (<code>email_hash</code>, <code>cpf_hash</code>, <code>cpf_inicio</code>) e pode ser reimportado no lugar de <code>email</code> e <code>cpf</code>.</li>
             <li><code>pago</code> - opcional, <code>0</code> para não ou <code>1</code> para sim</li>
             <li><code>prioridade</code> - opcional, <code>0</code> para não prioridade ou <code>1</code> para prioridade; com <code>1</code>, a pessoa vai para o guichê de prioridade, mesmo que a coluna <code>guiche</code> esteja preenchida</li>
             <li><code>id</code> - opcional, usado para atualizar o mesmo participante ao reimportar dados exportados</li>

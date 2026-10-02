@@ -5,7 +5,8 @@ from pathlib import Path
 from email.message import Message
 from unittest.mock import patch
 
-from credenciamento import event_theme, settings
+from credenciamento import auth, event_theme, settings
+from credenciamento import db as database
 from credenciamento.web.routes import ROUTES
 from credenciamento.web.server import App
 from support import CredenciamentoTestCase
@@ -146,6 +147,50 @@ class WebTest(CredenciamentoTestCase):
             self.assertEqual(client_ip("172.18.0.1", "10.0.0.5"), "10.0.0.5")
         with self.assertRaises(ValueError):
             settings.trusted_proxy_networks("rede-docker")
+
+    def test_logout_and_new_password_end_sessions(self):
+        cookie, csrf = self.login("vol1")
+        other_cookie, other_csrf = self.login("vol1")
+        self.assertNotEqual(csrf, other_csrf)
+        # O token CSRF de uma sessão não vale em outra.
+        self.assertEqual(self.request("/api/logout", {}, cookie=cookie, csrf=other_csrf)[0], 403)
+        self.assertEqual(self.request("/api/logout", {}, cookie=cookie, csrf=csrf)[0], 200)
+        self.assertIsNone(self.request("/api/me", cookie=cookie)[1]["user"])
+        self.assertEqual(self.request("/api/me", cookie=other_cookie)[1]["user"]["username"], "vol1")
+        with database.connect() as db:
+            self.assertEqual(auth.end_user_sessions(db, "vol1"), 1)
+        self.assertIsNone(self.request("/api/me", cookie=other_cookie)[1]["user"])
+        for forged in ("session=", "session=abc", "session=" + "x" * 43):
+            self.assertIsNone(self.request("/api/me", cookie=forged)[1]["user"])
+
+    def test_login_limits_count_only_wrong_passwords_per_ip_and_account(self):
+        settings.LIMITS.update(login_ip="4/5", login_user="2/15")
+        for _ in range(6):
+            self.login("vol1")
+        wrong = {"username": "vol2", "password": "wrong-password"}
+        self.assertEqual([self.request("/api/login", wrong)[0] for _ in range(3)], [401, 401, 429])
+        # A conta fica bloqueada mesmo com a senha certa; as outras contas seguem entrando.
+        self.assertEqual(self.request("/api/login", {"username": "vol2", "password": "strong-password"})[0], 429)
+        self.login("att1")
+        # Usuários inexistentes contam do mesmo jeito, sem revelar que não existem.
+        missing = {"username": "nobody", "password": "wrong-password"}
+        self.assertEqual([self.request("/api/login", missing)[0] for _ in range(3)], [401, 401, 429])
+        # Quatro senhas erradas vindas do mesmo IP bloqueiam o IP para qualquer conta.
+        self.assertEqual(self.request("/api/login", {"username": "admin", "password": "strong-password"})[0], 429)
+
+    def test_strict_transport_security_only_with_https_public_url(self):
+        self.assertNotIn("Strict-Transport-Security", self.request("/api/event")[2])
+        with patch.object(settings, "PUBLIC_URL", "https://checkin.example.org"):
+            for path in ("/api/event", "/"):
+                headers = self.request(path, json_response=path != "/")[2]
+                self.assertEqual(headers["Strict-Transport-Security"], "max-age=31536000", path)
+
+    def test_invalid_limits_are_rejected(self):
+        for value in ("", "10", "0/5", "5/0", "abc/5"):
+            with self.subTest(value=value), patch.dict(settings.LIMITS, search=value):
+                with self.assertRaises(ValueError):
+                    settings.rate_limit("search")
+        self.assertEqual(settings.rate_limit("search_miss"), (20, 600))
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 from .. import settings
-from ..auth import csrf_token, unsign
+from ..auth import csrf_token, session_user
 from ..db import connect
 from ..event_theme import event_config, theme_css
 from . import admin, public, staff  # noqa: F401  (importar registra as rotas)
@@ -27,8 +27,11 @@ class App(BaseHTTPRequestHandler):
     server_version = "CheckIn/1"
 
     def log_message(self, fmt, *args):
-        # Avoid logging lookup data or query strings.
-        print(f"{self.address_string()} - {fmt % args}")
+        # Avoid logging lookup data or query strings. Mostra o IP usado nos limites de tentativas
+        # ("IP via proxy" quando veio do X-Forwarded-For): é como se confere que o proxy está certo.
+        peer = self.client_address[0]
+        ip = self.client_ip() if getattr(self, "headers", None) is not None else peer
+        print(f"{ip if ip == peer else f'{ip} via {peer}'} - {fmt % args}", flush=True)
 
     def client_ip(self):
         # Atrás de proxies confiáveis, lê o X-Forwarded-For da direita para a esquerda e para no
@@ -49,9 +52,7 @@ class App(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self.security_headers()
         for key, val in (headers or {}).items():
             self.send_header(key, val)
         self.send_header("Content-Length", str(len(body)))
@@ -63,7 +64,7 @@ class App(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/csv; charset=utf-8")
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
+        self.security_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -81,16 +82,21 @@ class App(BaseHTTPRequestHandler):
 
     def session(self):
         cookies = self.headers.get("Cookie", "").split(";")
-        token = next((x.strip()[8:] for x in cookies if x.strip().startswith("session=")), "")
-        data = unsign(token)
-        if not data or data.get("kind") != "session":
-            return None
+        self.session_token = next((x.strip()[8:] for x in cookies if x.strip().startswith("session=")), "")
         with connect() as db:
-            user = db.execute("SELECT username,role,guiche FROM users WHERE username=?", (data.get("user"),)).fetchone()
+            user = session_user(db, self.session_token)
         return dict(user) if user else None
 
     def check_csrf(self, user):
-        return hmac.compare_digest(self.headers.get("X-CSRF-Token", ""), csrf_token(user["username"]))
+        return hmac.compare_digest(self.headers.get("X-CSRF-Token", ""), csrf_token(self.session_token))
+
+    def security_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if settings.PUBLIC_URL.startswith("https://"):
+            # O navegador passa a recusar a versão sem HTTPS do endereço (e o cookie ir aberto pela rede).
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -139,9 +145,7 @@ class App(BaseHTTPRequestHandler):
         self.send_header("Content-Type", mime + ("; charset=utf-8" if mime.startswith("text/") else ""))
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self.security_headers()
         self.end_headers()
         self.wfile.write(body)
 

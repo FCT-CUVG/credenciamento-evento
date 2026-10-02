@@ -1,0 +1,25 @@
+# HTTPS até esta máquina, atrás do proxy HTTPS da instituição (perfil "https-interno").
+# O certificado que os participantes veem é o do proxy da instituição. Aqui o Caddy usa um
+# certificado da própria CA interna, para o trecho proxy -> esta máquina ir criptografado.
+# Variáveis do .env: CHECKIN_DOMAIN, CHECKIN_SERVER_IP e CHECKIN_PROXY_IPS.
+{
+	# O proxy pode conectar sem informar o nome do site (o padrão do nginx); usa o certificado do IP.
+	default_sni {$CHECKIN_SERVER_IP}
+	skip_install_trust
+	auto_https disable_redirects
+	servers {
+		# Só o proxy da instituição informa o IP de quem acessou; de outras origens, o cabeçalho é ignorado.
+		trusted_proxies static {$CHECKIN_PROXY_IPS}
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+https://{$CHECKIN_DOMAIN}, https://{$CHECKIN_SERVER_IP} {
+	tls internal
+	encode
+	reverse_proxy app:8000 {
+		# Repassa só o IP de quem acessou, já conferido acima.
+		header_up X-Forwarded-For {client_ip}
+	}
+}

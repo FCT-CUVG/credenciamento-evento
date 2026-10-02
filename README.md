@@ -9,7 +9,7 @@ Sistema local para pré-check-in, busca de kits, atendimento em guichês e acomp
 3. Atendente abre `/fila` e confirma a retirada após entregar o kit. A conta do atendente determina o guichê inicial; o menu permite consultar outros guichês, mas cada atendente só pode confirmar entregas do próprio guichê. Na tela de um guichê, os cartões mostram os 3 primeiros dígitos do CPF para conferência; o número do guichê aparece nos cartões apenas em "Todos os guichês".
 4. Qualquer pessoa pode abrir `/painel/resumo`, sem login, para acompanhar inscritos, pessoas que chegaram e participantes credenciados. A coordenação usa `/painel` para ver também as etapas intermediárias, a lista individual, o estado da sincronização, a importação/exportação de participantes e as faixas dos guichês. Pendências (pagamento não confirmado ou afiliação não informada) são tratadas no próprio painel detalhado: o atalho "Pendências de orientação" filtra quem chegou com pendência, o pagamento e a prioridade são alterados na linha, e a afiliação pode ser preenchida ali mesmo. Resolvidas as pendências, a pessoa entra na fila de separação ou pode ser credenciada direto pela linha de etapas. A página pública não informa o motivo: só pede que a pessoa procure um voluntário para orientações.
 
-As telas operacionais da equipe exigem conta e senha; o resumo público mostra apenas três totais. A busca pública retorna somente o nome com os caracteres centrais de cada palavra mascarados e o guichê (ou o aviso para procurar um voluntário). Ela não informa CPF, e-mail, afiliação, pagamento nem o motivo de uma pendência, e tem limite de tentativas por IP. Buscar de novo uma inscrição já registrada só mostra o mesmo resultado, sem registrar outra chegada. O menu da equipe mostra todos os guichês de `config/guiches.json`, além dos guichês atribuídos diretamente a participantes ou atendentes. A fila atualiza automaticamente a cada cinco segundos; os painéis, a cada dez segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
+As telas operacionais da equipe exigem conta e senha; o resumo público mostra apenas três totais. A busca pública retorna somente o nome com os caracteres centrais de cada palavra mascarados e o guichê (ou o aviso para procurar um voluntário). Ela não informa CPF, e-mail, afiliação, pagamento nem o motivo de uma pendência, só funciona enquanto a coordenação deixa o pré-check-in aberto e limita quem erra muitas buscas (veja [Segurança e dados pessoais](#segurança-e-dados-pessoais)). Buscar de novo uma inscrição já registrada só mostra o mesmo resultado, sem registrar outra chegada. O menu da equipe mostra todos os guichês de `config/guiches.json`, além dos guichês atribuídos diretamente a participantes ou atendentes. A fila atualiza automaticamente a cada cinco segundos; os painéis, a cada dez segundos. Assumir ou liberar uma busca age imediatamente; marcar o material como pronto no guichê e confirmar a retirada pedem um segundo clique.
 
 ## Instalação e implantação
 
@@ -27,90 +27,110 @@ As telas operacionais da equipe exigem conta e senha; o resumo público mostra a
 ### Experimentar na própria máquina
 
 ```sh
+export CHECKIN_SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+export CHECKIN_LOOKUP_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
 python3 app.py import exemplos/participantes-teste.csv
 python3 app.py user coordenacao admin        # pede a senha (mínimo 10 caracteres)
-export CHECKIN_SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+python3 app.py public-checkin open           # o pré-check-in começa fechado
 python3 app.py serve                         # abre em http://127.0.0.1:8000
 ```
 
-A página pública fica em `/`; a equipe entra em `/login`. Os dados vão para a pasta `data/`.
+A página pública fica em `/`; a equipe entra em `/login`. Os dados vão para a pasta `data/`. Use sempre o mesmo `CHECKIN_LOOKUP_SECRET` para o mesmo banco: com outro, a busca pública não reconhece as inscrições.
 
 ### Com Docker
 
-A imagem usa `python:3.13-slim`, roda com um usuário sem privilégios e guarda tudo o que muda (banco, CSV espelho e faixas dos guichês) no volume `/data`. Precisa de Docker com o plugin `docker compose`.
+A imagem usa `python:3.13-slim`, roda com um usuário sem privilégios e guarda tudo o que muda (banco, CSV espelho e faixas dos guichês) no volume `dados`. Um serviço à parte faz uma cópia do banco a cada hora no volume `backups`. Precisa de Docker com o plugin `docker compose`.
 
 | Arquivo | Para que serve |
 |---|---|
 | `Dockerfile` | Monta a imagem com o código, a identidade visual e as faixas iniciais dos guichês. |
-| `compose.yaml` | Sobe a aplicação (por padrão, porta `8000` só em `127.0.0.1`) e, no perfil `https`, um [Caddy](https://caddyserver.com) com certificado automático. |
+| `compose.yaml` | Sobe a aplicação (por padrão, porta `8000` só em `127.0.0.1`), o backup a cada hora e, conforme o perfil, um [Caddy](https://caddyserver.com) para o HTTPS. |
 | `.env.example` | Modelo das variáveis; copie para `.env` (que não vai para o git nem para a imagem). |
 | `docker/entrypoint.sh` | Na primeira partida, copia `config/guiches.json` para o volume. |
-| `docker/Caddyfile` | Configuração do proxy HTTPS do perfil `https`. |
+| `docker/Caddyfile` | HTTPS com certificado do Let's Encrypt (perfil `https`). |
+| `docker/Caddyfile.interno` | HTTPS atrás do proxy da instituição (perfil `https-interno`). |
 
 **1. Personalize o evento antes de montar a imagem:** `config/evento.yaml`, arquivos em `static/assets/` (veja [Identidade visual](#identidade-visual-do-evento)) e as faixas iniciais de `config/guiches.json`. Esses arquivos entram na imagem; depois de mudá-los, monte de novo com `--build`.
 
-**2. Crie o `.env`** com o segredo das sessões:
+**2. Crie o `.env`** com os dois segredos:
 
 ```sh
 cp .env.example .env
-openssl rand -hex 32      # cole o resultado em CHECKIN_SESSION_SECRET, no .env
+openssl rand -hex 32      # cole em CHECKIN_SESSION_SECRET
+openssl rand -hex 32      # rode de novo e cole em CHECKIN_LOOKUP_SECRET
 ```
 
-No servidor, descomente também `CHECKIN_PUBLIC_URL` e `CHECKIN_DOMAIN` com o seu domínio. As demais variáveis da [tabela de variáveis](#colocar-num-servidor-sem-docker) (Google Sheets etc.) também vão no `.env`. `CHECKIN_DATA_DIR`, `CHECKIN_RANGES_FILE` e `CHECKIN_TRUSTED_PROXY` já vêm definidas pela imagem e pelo compose.
+`CHECKIN_LOOKUP_SECRET` é a chave das buscas por CPF e e-mail, que ficam guardados só como chave (veja [Segurança e dados pessoais](#segurança-e-dados-pessoais)). Guarde uma cópia dele em lugar seguro e separado dos backups: se ele se perder ou mudar, a busca pública deixa de reconhecer as inscrições e é preciso reimportar a lista original.
 
-**3. Suba o serviço:**
+No servidor, defina também `CHECKIN_PUBLIC_URL` e `CHECKIN_DOMAIN` com o seu domínio. As demais variáveis (Google Sheets, limites de tentativas) estão comentadas no `.env.example`. `CHECKIN_DATA_DIR`, `CHECKIN_RANGES_FILE` e `CHECKIN_TRUSTED_PROXY` já vêm definidas pela imagem e pelo compose.
 
-```sh
-docker compose up -d --build                    # só a aplicação, em http://127.0.0.1:8000
-docker compose --profile https up -d --build    # aplicação + Caddy com HTTPS em CHECKIN_DOMAIN
-```
+**3. Escolha como o HTTPS chega** e suba o serviço:
 
-Para o perfil `https`, o DNS do domínio precisa apontar para o servidor e as portas 80 e 443 precisam estar livres e abertas. Se a máquina já tem um Caddy ou nginx, use só o primeiro comando e aponte o proxy existente para `127.0.0.1:8000`, como no [passo 6](#colocar-num-servidor-sem-docker) abaixo.
+| Situação | Comando |
+|---|---|
+| Só experimentar, em `http://127.0.0.1:8000` | `docker compose up -d --build` |
+| O servidor recebe direto da internet nas portas 80 e 443, e o DNS do domínio aponta para ele | `docker compose --profile https up -d --build` |
+| Um proxy da instituição fica com o certificado e repassa **em HTTPS** para a porta 443 deste servidor | `docker compose --profile https-interno up -d --build` |
+| Um proxy (da instituição ou nginx/Caddy nesta máquina) repassa **em HTTP** | `docker compose up -d --build`, com as variáveis abaixo |
 
-**HTTPS feito por outra máquina** (por exemplo, o proxy reverso da instituição, que fica com o certificado e repassa os acessos em HTTP para este servidor): não use o perfil `https`. No `.env`:
+Use um perfil de Caddy ou o outro, nunca os dois juntos.
+
+**Atrás de um proxy**, a aplicação precisa saber o IP de quem o proxy atende; sem isso, todo mundo conta como uma pessoa só no limite de tentativas. No `.env`:
 
 ```sh
 CHECKIN_PUBLIC_URL=https://checkin.seu-dominio.br
-CHECKIN_BIND=10.0.0.10          # IP deste servidor que o proxy alcança (veja com: ip -br -4 addr)
-CHECKIN_PORT=8000               # porta para onde o proxy repassa
-CHECKIN_PROXY_IPS=10.0.0.1      # IP(s) do proxy, separados por vírgula
+CHECKIN_DOMAIN=checkin.seu-dominio.br
+CHECKIN_PROXY_IPS=10.0.0.1        # IP(s) do proxy, separados por espaço
+# perfil https-interno: IP deste servidor para onde o proxy repassa
+CHECKIN_SERVER_IP=10.0.0.10
+# proxy que repassa em HTTP: onde a aplicação fica acessível
+# CHECKIN_BIND=10.0.0.10
+# CHECKIN_PORT=8000
 ```
 
-Peça à equipe do proxy que repasse para `http://IP-DO-SERVIDOR:8000` e envie o `X-Forwarded-For` (substituindo ou acrescentando, os dois funcionam). Depois de subir, confira em `docker compose logs app`: cada linha começa pelo IP de quem conectou, que deve ser o do proxy. Se aparecer `172.31.250.1`, o Docker desta máquina está escondendo o IP de origem, e todos os acessos contariam como uma pessoa só no limite de tentativas.
+- Para descobrir o IP do proxy, veja de onde chegam as conexões quando alguém abre o site, por exemplo com `sudo tcpdump -ni any 'tcp[tcpflags] & tcp-syn != 0 and port 443'`.
+- Peça que o proxy envie o cabeçalho `X-Forwarded-For` (substituindo ou acrescentando, os dois funcionam). No perfil `https-interno`, o proxy também não pode exigir certificado válido deste lado (o padrão do nginx): o Caddy usa um certificado da própria CA interna.
+- Com um nginx ou Caddy nesta mesma máquina repassando para `127.0.0.1:8000`, use `CHECKIN_PROXY_IPS=172.31.250.1` (o gateway da rede do Docker).
+- **Confira depois de subir:** abra o site pelo celular, no 4G, e rode `docker compose logs app`. A linha do seu acesso deve começar pelo IP do celular (`IP-DO-CELULAR via 172.31.250.10`, ou `via IP-DO-PROXY`). Se começar pelo IP do proxy ou por `172.31.250.1`, o IP real não está chegando: revise `CHECKIN_PROXY_IPS` ou peça o `X-Forwarded-For` ao proxy.
+- O `X-Forwarded-For` só é aceito do Caddy deste compose (IP fixo `172.31.250.10`) e dos IPs em `CHECKIN_PROXY_IPS`; vindo de qualquer outro lugar, é ignorado.
+- Com `CHECKIN_BIND` fora de `127.0.0.1`, a aplicação fica acessível em HTTP na rede. Peça que a porta só aceite conexões do proxy. Regras do `ufw` não bastam, porque o Docker passa por cima delas nas portas publicadas.
 
-Com `CHECKIN_BIND` fora de `127.0.0.1`, defina **sempre** `CHECKIN_PROXY_IPS`: só então o compose deixa de confiar na rede interna do Docker, e ninguém consegue forjar o próprio IP acessando a porta diretamente. Também vale pedir que a porta só aceite conexões do proxy. Regras do `ufw` não bastam para isso, porque o Docker passa por cima delas nas portas publicadas.
-
-**4. Crie as contas e importe a lista** dentro do container:
+**4. Crie as contas, importe a lista e abra o pré-check-in:**
 
 ```sh
-docker compose exec app python app.py user coordenacao admin     # pede a senha
-docker compose exec app python app.py user voluntario1 volunteer
-docker compose exec app python app.py user atendimento1 attendant --guiche 1
+docker compose exec app python app.py user coordenacao admin --gerar-senha
+docker compose exec app python app.py user voluntario1 volunteer --gerar-senha
+docker compose exec app python app.py user atendimento1 attendant --guiche 1 --gerar-senha
 
 docker compose exec -T app sh -c 'cat > /tmp/participantes.csv' < participantes.csv
 docker compose exec app python app.py import /tmp/participantes.csv
+docker compose exec app rm /tmp/participantes.csv
 # para experimentar: docker compose exec app python app.py import exemplos/participantes-teste.csv
 ```
 
-O primeiro comando envia o arquivo pela entrada padrão, criando-o já com o usuário do container (um `docker compose cp` o criaria como root e, se o original tiver permissão restrita, a importação não conseguiria lê-lo). A lista também pode ser importada pelo painel detalhado.
+`--gerar-senha` cria e mostra uma senha forte; sem ela, o comando pede a senha. Crie uma conta para cada pessoa da equipe. O envio do arquivo pela entrada padrão o cria já com o usuário do container (um `docker compose cp` o criaria como root e, se o original tiver permissão restrita, a importação não conseguiria lê-lo). A lista também pode ser importada pelo painel detalhado.
+
+O pré-check-in pelo celular **começa fechado**. Abra pelo painel (botão no topo) ou com `docker compose exec app python app.py public-checkin open`, quando o credenciamento começar.
 
 **Operação do dia a dia:**
 
 ```sh
 docker compose logs -f app                                    # acompanhar o log
+docker compose exec app python app.py public-checkin close    # fechar o pré-check-in (open para abrir)
+docker compose exec app python app.py revoke voluntario1      # encerrar as sessões de uma conta (celular perdido)
 docker compose exec app python app.py sync                    # forçar o envio ao Google Sheets
-docker compose exec app python app.py backup /tmp/backup.sqlite3
-docker compose cp app:/tmp/backup.sqlite3 ./backup-AAAA-MM-DD.sqlite3
+docker compose exec backup ls -lt /backups                    # backups automáticos (um por hora, os últimos 48)
+docker compose cp backup:/backups/credenciamento-AAAAMMDD-HHMMSS.sqlite3 .   # levar um para fora do servidor
 ```
 
-**Atualizar para uma nova versão:** faça um backup como acima e rode `git pull && docker compose up -d --build` (acrescente `--profile https` se usar o Caddy). Os dados ficam no volume e o banco é migrado ao iniciar.
+**Atualizar para uma nova versão:** confira que há um backup recente e rode `git pull && docker compose up -d --build --pull always` (acrescente o perfil de Caddy que você usa). O `--pull always` traz as correções de segurança da imagem do Python. Os dados ficam no volume e o banco é migrado ao iniciar.
 
 **Observações:**
 
 - As faixas dos guichês editadas no painel ficam em `/data/guiches.json`, no volume. Depois da primeira partida, mudar `config/guiches.json` e remontar a imagem não altera as faixas em uso; ajuste-as pelo painel.
-- `docker compose down` mantém os dados; `docker compose down -v` **apaga** o volume com o banco.
-- O compose fixa a rede interna em `172.31.250.0/24` e, quando `CHECKIN_PROXY_IPS` não está definido, confia no `X-Forwarded-For` vindo dela (o Caddy do perfil `https` ou um proxy na própria máquina). Se essa faixa conflitar com outra rede, mude `CHECKIN_DOCKER_SUBNET` no `.env`. Sem `CHECKIN_PROXY_IPS`, mantenha a porta da aplicação publicada só em `127.0.0.1`.
-- Para usar uma pasta do servidor em vez do volume nomeado, troque `dados:/data` por `./data:/data` e dê a pasta ao usuário do container: `sudo chown 10001:10001 data`.
+- `docker compose down` mantém os dados; `docker compose down -v` **apaga** os volumes com o banco e os backups.
+- O compose fixa a rede interna em `172.31.250.0/24`, com o Caddy em `172.31.250.10`. Se essa faixa conflitar com outra rede, mude `CHECKIN_DOCKER_SUBNET` e `CHECKIN_CADDY_IP` no `.env`.
+- Para usar uma pasta do servidor em vez do volume nomeado, troque `dados:/data` por `./data:/data` (no `app` e no `backup`) e dê a pasta ao usuário do container: `sudo chown 10001:10001 data`.
 
 ### Colocar num servidor (sem Docker)
 
@@ -128,16 +148,19 @@ sudo chown -R credenciamento: /opt/credenciamento
 
 | Variável | Obrigatória | Para que serve |
 |---|---|---|
-| `CHECKIN_SESSION_SECRET` | sim | Assina as sessões da equipe. Mínimo de 32 caracteres; gere com o comando acima e guarde-o. Se mudar, todos precisam entrar de novo. |
-| `CHECKIN_PUBLIC_URL` | recomendada | Endereço público, ex.: `https://credenciamento.seu-dominio.org`. Com `https://`, os cookies passam a exigir conexão segura. |
-| `CHECKIN_TRUSTED_PROXY` | com proxy | `1` quando o proxy HTTPS roda na mesma máquina; ou uma lista de IPs/redes separados por vírgula (ex.: `172.31.250.0/24`) de onde o proxy se conecta. Faz o limite de tentativas usar o IP real de cada pessoa (lido do `X-Forwarded-For` só dessas origens, da direita para a esquerda, parando no primeiro endereço que não é de proxy confiável). |
+| `CHECKIN_SESSION_SECRET` | sim | Assina o token CSRF da equipe. Mínimo de 32 caracteres; gere com o comando acima. |
+| `CHECKIN_LOOKUP_SECRET` | sim | Chave das buscas por CPF e e-mail, que só ficam guardados como chave. Mínimo de 32 caracteres e diferente do anterior. Guarde uma cópia em lugar seguro: se mudar, é preciso reimportar a lista original. |
+| `CHECKIN_PUBLIC_URL` | recomendada | Endereço público, ex.: `https://credenciamento.seu-dominio.org`. Com `https://`, os cookies passam a exigir conexão segura e o navegador passa a usar só HTTPS no endereço (HSTS). |
+| `CHECKIN_TRUSTED_PROXY` | com proxy | `1` quando o proxy HTTPS roda na mesma máquina; ou uma lista de IPs/redes, separados por vírgula ou espaço, de onde o proxy se conecta. Faz o limite de tentativas usar o IP real de cada pessoa (lido do `X-Forwarded-For` só dessas origens, da direita para a esquerda, parando no primeiro endereço que não é de proxy confiável). |
 | `CHECKIN_DATA_DIR` | não | Pasta do banco e do CSV espelho. Padrão: `data/` dentro da instalação. |
 | `CHECKIN_EVENT_CONFIG` | não | Outro caminho para o YAML do evento. |
 | `CHECKIN_RANGES_FILE` | não | Outro caminho para o arquivo de guichês. |
 | `CHECKIN_SHEETS_URL` e `CHECKIN_SHEETS_SECRET` | não | Ativam a cópia no Google Sheets. |
+| `CHECKIN_LIMIT_SEARCH`, `CHECKIN_LIMIT_SEARCH_MISS`, `CHECKIN_LIMIT_LOGIN_IP`, `CHECKIN_LIMIT_LOGIN_USER`, `CHECKIN_ALERT_SEARCH_MISS` | não | Limites de tentativas e alerta do painel, no formato `quantidade/minutos`; veja [Segurança e dados pessoais](#segurança-e-dados-pessoais). |
 
 ```sh
 CHECKIN_SESSION_SECRET=cole-aqui-o-segredo-gerado
+CHECKIN_LOOKUP_SECRET=cole-aqui-outro-segredo-gerado
 CHECKIN_PUBLIC_URL=https://credenciamento.seu-dominio.org
 CHECKIN_TRUSTED_PROXY=1
 ```
@@ -147,13 +170,14 @@ CHECKIN_TRUSTED_PROXY=1
 ```sh
 cd /opt/credenciamento
 run() { sudo -u credenciamento sh -c 'set -a; . /etc/credenciamento.env; exec "$@"' sh "$@"; }
-run python3 app.py user coordenacao admin
-run python3 app.py user voluntario1 volunteer
-run python3 app.py user atendimento1 attendant --guiche 1
+run python3 app.py user coordenacao admin --gerar-senha
+run python3 app.py user voluntario1 volunteer --gerar-senha
+run python3 app.py user atendimento1 attendant --guiche 1 --gerar-senha
 run python3 app.py import /caminho/participantes.csv
+run python3 app.py public-checkin open      # quando o credenciamento começar
 ```
 
-Papéis: `admin` (coordenação, painel detalhado), `volunteer` (separação dos kits) e `attendant` (um guichê, informado em `--guiche`). As senhas são pedidas no terminal; rodar o comando de novo para o mesmo nome troca a senha.
+Papéis: `admin` (coordenação, painel detalhado), `volunteer` (separação dos kits) e `attendant` (um guichê, informado em `--guiche`). Com `--gerar-senha`, o comando cria e mostra uma senha forte; sem ela, pede a senha no terminal. Rodar o comando de novo para o mesmo nome troca a senha e encerra as sessões abertas com a anterior. `run python3 app.py revoke NOME` encerra as sessões sem trocar a senha (por exemplo, celular perdido). O pré-check-in pelo celular começa fechado: abra e feche pelo painel ou com `public-checkin open` / `close`.
 
 **5. Deixe rodando como serviço** (`/etc/systemd/system/credenciamento.service`):
 
@@ -204,15 +228,19 @@ sudo -u credenciamento git pull
 sudo systemctl restart credenciamento
 ```
 
-O banco é atualizado automaticamente ao iniciar; não há passo manual de migração.
+O banco é atualizado automaticamente ao iniciar; não há passo manual de migração. Vindo de uma versão que guardava CPF e e-mail em texto, defina `CHECKIN_LOOKUP_SECRET` antes de reiniciar (veja [Armazenamento e cópia](#armazenamento-e-cópia)).
 
 ### Antes do evento
 
 - [ ] Faixas de guichês revisadas e lista real importada (confira os totais por guichê no painel).
-- [ ] Contas criadas para coordenação, voluntários e cada guichê.
+- [ ] Uma conta por pessoa (coordenação, voluntários e cada guichê), com senhas geradas e entregues individualmente.
+- [ ] `CHECKIN_LOOKUP_SECRET` guardado em lugar seguro, fora do servidor e longe dos backups.
+- [ ] Log conferido: um acesso pelo 4G aparece com o IP do celular (veja "Confira depois de subir" em [Com Docker](#com-docker)).
+- [ ] Pré-check-in aberto pelo painel na hora de começar (ele vem fechado).
 - [ ] Domínio com HTTPS funcionando e QR Code impresso.
 - [ ] Ensaio completo em vários celulares e guichês com uma cópia da lista, incluindo queda de rede e volta da sincronização.
 - [ ] Backup testado (`app.py backup`) e guardado fora do servidor.
+- [ ] Lista impressa por guichê, como plano B se o sistema ou a rede caírem.
 
 ## Identidade visual do evento
 
@@ -295,11 +323,13 @@ CSV (separado por vírgula, ponto e vírgula ou tabulação) ou JSON (lista de o
 | `nome_cracha` | não | Vazio: usa o primeiro e o último nome. |
 | `afiliacao` | não | Vazia: a pessoa registra a chegada, mas fica em "Orientação pendente" até alguém preencher. |
 | `cpf` | não | 11 dígitos ou `xxx.xxx.xxx-xx`. |
+| `email_hash`, `cpf_hash`, `cpf_inicio` | não | Vêm da exportação e substituem `email` e `cpf` quando eles não estão no arquivo. |
 | `pago` | não | `0` ou `1`. Com `0`, fica em "Orientação pendente" até confirmar o pagamento. |
 | `prioridade` | não | `0` ou `1`. Com `1`, vai sempre para o guichê de prioridade. |
 | `guiche` | não | Substitui o guichê calculado pelas faixas (exceto para quem tem prioridade). |
 | `id` | não | Vem da exportação; permite corrigir nome ou e-mail sem criar outra pessoa. |
 
+- **CPF e e-mail não ficam guardados no sistema.** Na importação, cada um vira uma chave (HMAC com `CHECKIN_LOOKUP_SECRET`) que só serve para reconhecer o que a pessoa digita na busca; do CPF ficam também os 3 primeiros dígitos, para a conferência no guichê. Guarde a lista original fora do servidor: ela é a única cópia desses dados.
 - É preciso pelo menos uma pessoa após o cabeçalho; linhas vazias são ignoradas.
 - Reimportar atualiza os dados cadastrais sem apagar as etapas já registradas. A troca de guichê é recusada para quem já está em busca ou já retirou o kit.
 - Os campos operacionais de um CSV exportado (`situacao`, `responsavel`, horários, `revisao`) são aceitos e ignorados.
@@ -320,18 +350,56 @@ CSV (separado por vírgula, ponto e vírgula ou tabulação) ou JSON (lista de o
 
 No painel detalhado:
 
-- **Exportar dados**: CSV reimportável com os dados cadastrais e os campos operacionais.
+- **Exportar dados**: CSV reimportável com os dados cadastrais e os campos operacionais. Não traz CPF nem e-mail, só as chaves (`email_hash`, `cpf_hash`) e o início do CPF; reimportado, reconhece as mesmas pessoas.
 - **Exportar logs de movimentações**: histórico de cada ação, com responsável e data/hora.
 
-Os arquivos contêm dados pessoais; guarde-os com cuidado.
+Os arquivos contêm nomes e outros dados pessoais; guarde-os com cuidado.
+
+No painel, a busca encontra pelo nome, afiliação ou guichê. Para achar alguém pelo CPF ou e-mail, digite o CPF completo (11 dígitos) ou o e-mail completo: o servidor confere a chave e mostra a pessoa.
 
 ## Armazenamento e cópia
 
-O arquivo `data/credenciamento.sqlite3` é a fonte principal. Cada alteração gera um evento com data e responsável. `data/participantes.csv` é uma cópia local para consulta, reconstituída na partida e atualizada a cada alteração. Campos que poderiam ser interpretados como fórmulas recebem um apóstrofo de segurança nessa cópia; use a lista original para reimportações. Ambos contêm dados pessoais; proteja a pasta, backups e contas do servidor.
+O arquivo `data/credenciamento.sqlite3` é a fonte principal. Cada alteração gera um evento com data e responsável. `data/participantes.csv` é uma cópia local para consulta, reconstituída na partida e atualizada a cada alteração. Campos que poderiam ser interpretados como fórmulas recebem um apóstrofo de segurança nessa cópia; use a lista original para reimportações. Nenhum dos dois tem CPF ou e-mail, mas ambos têm nomes e dados do credenciamento; proteja a pasta, backups e contas do servidor.
+
+Um banco criado por uma versão anterior, que guardava CPF e e-mail em texto, é convertido automaticamente na primeira partida com `CHECKIN_LOOKUP_SECRET` definido: as chaves são calculadas, as colunas em texto são apagadas e o arquivo é reescrito. Backups feitos antes disso ainda têm os dados em texto; apague-os.
 
 Para criar uma cópia consistente do banco enquanto o serviço está em uso, execute `python3 app.py backup /caminho/seguro/backup-AAAA-MM-DD.sqlite3`. O comando não substitui um backup existente. Guarde cópias fora do servidor do evento.
 
 O sistema guarda os eventos pendentes em `sheet_outbox` no mesmo banco até o Google Sheets confirmar o lote. Se o serviço ficar fora do ar, a fila de sincronização continua guardada e será tentada novamente a cada 15 segundos. Rode `python3 app.py sync` para forçar uma tentativa. O painel mostra quantas alterações aguardam envio.
+
+## Segurança e dados pessoais
+
+O que o sistema faz sozinho:
+
+| Proteção | Como funciona |
+|---|---|
+| CPF e e-mail não ficam guardados | Só uma chave (HMAC) e os 3 primeiros dígitos do CPF. Sem `CHECKIN_LOOKUP_SECRET`, um banco, backup ou exportação vazados não revelam CPFs nem e-mails. A chave precisa ser secreta porque existem só um bilhão de CPFs: um hash comum seria revertido em minutos. |
+| Pré-check-in só no horário | Começa fechado; a coordenação abre e fecha pelo painel (ou `app.py public-checkin`). Fechado, a página pública só mostra um aviso e não consulta nada. |
+| Limite de quem erra a busca | Quem testa CPFs ao acaso quase sempre erra; o participante real quase sempre acerta. Por isso o limite principal conta só as buscas **sem resultado** por IP, e quem acerta não é barrado mesmo com muita gente no mesmo Wi-Fi. |
+| Alerta no painel | Avisa quando há muitas buscas sem resultado, de todas as origens, em pouco tempo. Se não houver fila no credenciamento, feche o pré-check-in. |
+| Limite de senhas erradas | Por IP e **por conta**; o login certo não conta. Usuário inexistente gasta o mesmo tempo e conta igual, sem revelar que não existe. |
+| Sessões encerráveis | Ficam no banco: sair encerra a sessão, trocar a senha encerra todas as da conta, e `app.py revoke NOME` encerra sem trocar a senha. Duram 12 horas. |
+| Navegador | Cookie `HttpOnly`, `SameSite=Strict` e `Secure` (com HTTPS), CSRF ligado à sessão, CSP restritiva e HSTS com `CHECKIN_PUBLIC_URL` em `https://`. |
+
+Limites padrão, ajustáveis no ambiente (`quantidade/minutos`):
+
+| Variável | Padrão | O que conta |
+|---|---|---|
+| `CHECKIN_LIMIT_SEARCH` | `60/1` | Todas as buscas da página pública, por IP. |
+| `CHECKIN_LIMIT_SEARCH_MISS` | `20/10` | Buscas sem resultado, por IP. Atingido, o IP espera até a janela passar. |
+| `CHECKIN_LIMIT_LOGIN_IP` | `20/5` | Senhas erradas, por IP. |
+| `CHECKIN_LIMIT_LOGIN_USER` | `10/15` | Senhas erradas, por conta. Quem souber o nome de uma conta consegue bloqueá-la por esse tempo; use nomes que não sejam óbvios. |
+| `CHECKIN_ALERT_SEARCH_MISS` | `30/10` | Alerta no painel: buscas sem resultado, somando todas as origens. |
+
+Os limites por IP dependem de a aplicação saber o IP de cada pessoa; atrás de um proxy, configure-o como em [Com Docker](#com-docker) e confira pelo log. Os limites ficam na memória e recomeçam quando o serviço reinicia.
+
+O que depende da equipe:
+
+- **Contas:** uma por pessoa, com senha gerada (`--gerar-senha`) e entregue individualmente. Nada de conta compartilhada nem senha colada no guichê. Ao fim de cada turno ou se um celular sumir, `app.py revoke NOME`.
+- **Exportações e backups:** só a coordenação exporta. Arquivos não circulam por WhatsApp ou e-mail. Cópias fora do servidor ficam criptografadas (um `.zip` com senha ou disco com BitLocker/FileVault).
+- **`CHECKIN_LOOKUP_SECRET`:** guarde uma cópia fora do servidor, separada dos backups (um gerenciador de senhas, por exemplo).
+- **Servidor:** acesso SSH só com chave (`sudo sshd -T | grep -i passwordauthentication` deve mostrar `no`), atualizações automáticas ativas (`systemctl status unattended-upgrades`), poucas pessoas no grupo `docker` (equivale a root) e, atrás de proxy, a porta da aplicação aceitando só o proxy.
+- **Depois do evento (LGPD):** os dados só podem ser guardados enquanto forem necessários. Defina um prazo (por exemplo, 30 dias), exporte o que precisa ficar para relatórios e apague o resto: `docker compose down -v` (banco e backups), os backups copiados para fora e o `.env`.
 
 ## Google Sheets (configurar depois)
 
@@ -342,7 +410,7 @@ O sistema guarda os eventos pendentes em `sheet_outbox` no mesmo banco até o Go
 5. No servidor, configure `CHECKIN_SHEETS_URL` com a URL do aplicativo, `CHECKIN_SHEETS_SECRET` com a mesma chave e reinicie o serviço.
 6. Verifique no painel que a fila pendente zera e confira as abas `Participantes` e `Histórico` antes do evento.
 
-O envio preserva revisões mais recentes e não duplica IDs de eventos em tentativas repetidas. O teste com uma planilha real ainda depende dessas credenciais.
+O envio preserva revisões mais recentes e não duplica IDs de eventos em tentativas repetidas. A planilha não recebe CPF nem e-mail, só o início do CPF; se você criou a planilha com uma versão anterior (colunas `Email` e `CPF`), use uma planilha nova. O teste com uma planilha real ainda depende dessas credenciais.
 
 ## Verificação local
 
@@ -350,7 +418,7 @@ O envio preserva revisões mais recentes e não duplica IDs de eventos em tentat
 python3 -m unittest discover -s tests -v
 ```
 
-Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `test_queue_and_status.py`, `test_import_export.py`, `test_desks.py`, `test_web.py`, `test_storage.py`). A base comum em `tests/support.py` cria banco e configuração numa pasta temporária, faz requisições diretas ao servidor e já tem os usuários `vol1`, `vol2`, `att1` e `admin`.
+Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `test_queue_and_status.py`, `test_import_export.py`, `test_desks.py`, `test_web.py`, `test_storage.py`). A base comum em `tests/support.py` cria banco e configuração numa pasta temporária, faz requisições diretas ao servidor e já tem os usuários `vol1`, `vol2`, `att1` e `admin`, com o pré-check-in aberto.
 
 ## Organização do código
 
@@ -360,16 +428,17 @@ Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `te
 |---|---|
 | `settings.py` | Caminhos e variáveis de ambiente (lidos como `settings.NOME` no momento do uso) |
 | `common.py` | Data atual, normalização de nomes e máscara de dados públicos |
+| `lookup.py` | Chaves de busca (HMAC) de CPF e e-mail, que não são guardados em texto |
 | `event_theme.py` | YAML do evento e geração do `theme.css` |
 | `db.py` | Conexão SQLite, esquema/migrações e `update_participant()`, o único caminho para alterar um participante |
 | `desks.py` | Faixas de letras, guichê de prioridade e propagação de mudanças de guichê |
-| `participants.py` | Etapas da situação e ações da fila de busca e guichê |
+| `participants.py` | Etapas da situação, ações da fila de busca e guichê e abertura do pré-check-in |
 | `csv_io.py` | Importação e exportações CSV/JSON |
-| `auth.py` | Senhas, sessão, CSRF e limite de tentativas |
+| `auth.py` | Senhas, sessões no banco, CSRF e limites de tentativas |
 | `sheets.py` | Sincronização com o Google Sheets |
 | `web/server.py` | Servidor HTTP, páginas estáticas e despacho da API (login, CSRF e papel checados num lugar só) |
 | `web/routes.py` | Tabela de rotas: cada rota declara método, caminho e papéis (`@route`) |
 | `web/public.py` / `staff.py` / `admin.py` | Rotas públicas, da equipe e da coordenação |
-| `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `sync`, `backup` |
+| `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `revoke`, `public-checkin`, `sync`, `backup` |
 
 No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js` e `dashboard/tools.js` (painel detalhado) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.

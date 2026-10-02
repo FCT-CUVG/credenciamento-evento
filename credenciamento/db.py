@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import settings
 from .common import now
+from .lookup import cpf_digits, cpf_key, email_key
 
 
 @contextmanager
@@ -32,8 +33,9 @@ def create_schema(db):
     db.executescript("""
     CREATE TABLE IF NOT EXISTS participants (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL,
-                badge_name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL, email_key TEXT NOT NULL,
-                cpf TEXT NOT NULL DEFAULT '', affiliation TEXT NOT NULL DEFAULT '',
+                badge_name TEXT NOT NULL DEFAULT '', email_key TEXT NOT NULL,
+                cpf_key TEXT NOT NULL DEFAULT '', cpf_prefix TEXT NOT NULL DEFAULT '',
+                affiliation TEXT NOT NULL DEFAULT '',
                 paid INTEGER NOT NULL DEFAULT 0 CHECK(paid IN (0,1)),
                 priority INTEGER NOT NULL DEFAULT 0 CHECK(priority IN (0,1)), guiche TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'registered' CHECK(status IN
@@ -58,6 +60,11 @@ def create_schema(db):
       attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
       FOREIGN KEY(event_id) REFERENCES events(id)
     );
+    CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(username);
+    CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     -- A busca pública passou a registrar a chegada num passo só, sem token de confirmação.
     DROP TABLE IF EXISTS lookup_tokens;
     """)
@@ -68,12 +75,40 @@ def create_schema(db):
         ("paid", "INTEGER NOT NULL DEFAULT 0 CHECK(paid IN (0,1))"),
         ("priority", "INTEGER NOT NULL DEFAULT 0 CHECK(priority IN (0,1))"),
         ("guiche_manual", "INTEGER NOT NULL DEFAULT 0 CHECK(guiche_manual IN (0,1))"),
+        ("cpf_key", "TEXT NOT NULL DEFAULT ''"),
+        ("cpf_prefix", "TEXT NOT NULL DEFAULT ''"),
     ):
         if name not in columns:
             db.execute(f"ALTER TABLE participants ADD COLUMN {name} {definition}")
             added.add(name)
     db.execute("UPDATE participants SET badge_name=name WHERE badge_name='' ")
+    if "cpf" in columns:
+        remove_plaintext_identifiers(db)
+        added.add("lookup_keys")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_cpf_key ON participants(cpf_key)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_email_key ON participants(email_key)")
     return added
+
+
+def remove_plaintext_identifiers(db):
+    """Bancos antigos guardavam CPF e e-mail em texto: troca pelas chaves HMAC, tira os dois do
+    histórico pendente do Google Sheets e apaga as colunas (VACUUM reescreve o arquivo sem elas)."""
+    db.execute("BEGIN IMMEDIATE")
+    for row in db.execute("SELECT id, email, cpf FROM participants").fetchall():
+        digits = cpf_digits(row["cpf"])
+        db.execute("UPDATE participants SET email_key=?, cpf_key=?, cpf_prefix=? WHERE id=?",
+                   (email_key(row["email"]), cpf_key(digits), digits[:3], row["id"]))
+    for row in db.execute("SELECT event_id, payload FROM sheet_outbox").fetchall():
+        payload = json.loads(row["payload"])
+        for name in ("email", "cpf"):
+            payload.get("participant", {}).pop(name, None)
+        db.execute("UPDATE sheet_outbox SET payload=? WHERE event_id=?",
+                   (json.dumps(payload, ensure_ascii=False), row["event_id"]))
+    db.execute("COMMIT")
+    db.execute("ALTER TABLE participants DROP COLUMN email")
+    db.execute("ALTER TABLE participants DROP COLUMN cpf")
+    db.execute("VACUUM")
+    db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
 
 def participant_dict(row, private=False):
@@ -81,10 +116,20 @@ def participant_dict(row, private=False):
                                   "claimed_by", "prechecked_at", "claimed_at", "ready_at",
                                   "completed_at", "updated_at", "revision")}
     d["priority"] = bool(row["priority"])
-    d["cpf_prefix"] = row["cpf"][:3]
+    d["cpf_prefix"] = row["cpf_prefix"]
     if private:
-        d.update(email=row["email"], cpf=row["cpf"], badge_name=row["badge_name"], paid=bool(row["paid"]))
+        d.update(badge_name=row["badge_name"], paid=bool(row["paid"]), has_cpf=bool(row["cpf_key"]))
     return d
+
+
+def get_setting(db, key, default=None):
+    row = db.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+    return json.loads(row["value"]) if row else default
+
+
+def set_setting(db, key, value):
+    db.execute("INSERT INTO app_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+               (key, json.dumps(value, ensure_ascii=False)))
 
 
 def pending_reasons(row):

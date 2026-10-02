@@ -1,7 +1,7 @@
 // Tabela do painel detalhado: linhas, etapas da situação, afiliação editável, filtros e cards por guichê.
 import {$, el, movementTime, searchKey, statusNames} from '../common.js';
 
-export const state = {items: [], page: 1, affiliationEditing: null};
+export const state = {items: [], page: 1, affiliationEditing: null, lookup: null};
 
 const hasPending = item =>
   !['registered', 'completed'].includes(item.status) && (!item.paid || !item.affiliation.trim());
@@ -12,8 +12,8 @@ const stepTimestamp = {
   registered: 'updated_at', prechecked: 'prechecked_at', searching: 'claimed_at', ready: 'ready_at', completed: 'completed_at'
 };
 const statusTime = item => item[stepTimestamp[item.status]] || item.updated_at;
-const formatCpf = cpf =>
-  /^\d{11}$/.test(cpf || '') ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : cpf || '—';
+// CPF e e-mail ficam guardados só como chave de busca; aparece apenas o início do CPF.
+const cpfText = item => item.has_cpf ? `${item.cpf_prefix}.***.***-**` : 'Sem CPF';
 
 // Linha de etapas clicáveis (IN → AB/OP → EB → PR → CR).
 function statusStepper(item) {
@@ -74,7 +74,7 @@ function affiliationCell(item) {
 
 function personCell(item) {
   const td = el('td', 'person-cell'), details = el('dl', 'person-details');
-  for (const [label, value] of [['CPF', formatCpf(item.cpf)], ['E-mail', item.email]]) {
+  for (const [label, value] of [['Crachá', item.badge_name], ['CPF', cpfText(item)]]) {
     details.append(el('dt', '', label), el('dd', '', value));
   }
   td.append(el('div', 'participant-name', item.name), details);
@@ -118,14 +118,16 @@ function movementCell(item) {
 }
 
 function filteredItems() {
-  const text = searchKey($('dashboard-filter').value), status = $('status-filter').value;
+  const raw = $('dashboard-filter').value, text = searchKey(raw), status = $('status-filter').value;
+  // CPF ou e-mail completo: vale a resposta do servidor (state.lookup), não o texto das linhas.
+  const lookup = state.lookup?.text === raw ? state.lookup.ids : null;
   const priority = $('priority-filter').value, paid = $('payment-filter').value, desk = $('desk-filter').value;
   return state.items.filter(item =>
     (!status || statusKey(item) === status) &&
     (!priority || item.priority === (priority === '1')) &&
     (!paid || item.paid === (paid === '1')) &&
     (!desk || item.guiche === desk) &&
-    searchKey(`${item.name} ${item.badge_name} ${item.email} ${item.cpf} ${item.affiliation} ${item.guiche}`).includes(text));
+    (lookup ? lookup.has(item.id) : searchKey(`${item.name} ${item.badge_name} ${item.affiliation} ${item.guiche}`).includes(text)));
 }
 
 export function renderDashboard() {

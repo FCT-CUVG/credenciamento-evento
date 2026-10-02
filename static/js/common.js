@@ -21,7 +21,7 @@ export const statusNames = {
 export let session = null;
 
 // Identidade do evento carregada de /api/event.
-export const eventInfo = {name: 'Evento', registrationHints: {}};
+export const eventInfo = {name: 'Evento', registrationHints: {}, checkinOpen: true};
 
 export async function api(path, data) {
   if (location.protocol === 'file:') {
@@ -44,6 +44,7 @@ export async function api(path, data) {
   if (!response.ok) {
     const error = new Error(body.error || 'Não foi possível concluir. Tente novamente.');
     error.status = response.status;
+    error.data = body;
     throw error;
   }
   return body;
@@ -62,6 +63,7 @@ export async function loadEventConfig() {
     const event = await api('/api/event');
     eventInfo.name = event.name;
     eventInfo.registrationHints = event.registration_hints || {};
+    eventInfo.checkinOpen = event.checkin_open !== false;
     for (const img of document.querySelectorAll('.site-brand img, .summary-logo')) {
       img.src = event.logo;
       img.alt = event.name;
@@ -149,5 +151,5 @@ export function movementTime(value) {
   return {label: dateTime(date, '2-digit'), title};
 }
 
-export const clockTime = () =>
-  new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+export const clockTime = value =>
+  (value ? new Date(value) : new Date()).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
