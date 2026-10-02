@@ -9,12 +9,14 @@ services:
     env_file: .env
     environment:
       CHECKIN_SESSION_SECRET: ${CHECKIN_SESSION_SECRET:?defina CHECKIN_SESSION_SECRET no arquivo .env}
-      # Aceita X-Forwarded-For só de quem está na rede do compose: o Caddy do perfil "https"
-      # ou um proxy na própria máquina (que chega pelo gateway dessa rede).
-      CHECKIN_TRUSTED_PROXY: ${CHECKIN_DOCKER_SUBNET:-172.31.250.0/24}
+      # De quem aceitar X-Forwarded-For: só dos proxies em CHECKIN_PROXY_IPS, quando definido
+      # (HTTPS feito em outra máquina); senão, da rede do compose (o Caddy do perfil "https"
+      # ou um proxy na própria máquina, que chega pelo gateway dessa rede).
+      CHECKIN_TRUSTED_PROXY: ${CHECKIN_PROXY_IPS:-${CHECKIN_DOCKER_SUBNET:-172.31.250.0/24}}
     ports:
-      # Só na própria máquina; os acessos externos passam pelo proxy HTTPS.
-      - "127.0.0.1:${CHECKIN_PORT:-8000}:8000"
+      # Padrão: só na própria máquina. Com o HTTPS num proxy de outra máquina, defina
+      # CHECKIN_BIND com o IP desta máquina que o proxy alcança.
+      - "${CHECKIN_BIND:-127.0.0.1}:${CHECKIN_PORT:-8000}:8000"
     volumes:
       - dados:/data
 

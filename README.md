@@ -42,7 +42,7 @@ A imagem usa `python:3.13-slim`, roda com um usuário sem privilégios e guarda 
 | Arquivo | Para que serve |
 |---|---|
 | `Dockerfile` | Monta a imagem com o código, a identidade visual e as faixas iniciais dos guichês. |
-| `compose.yaml` | Sobe a aplicação (porta `8000` só em `127.0.0.1`) e, no perfil `https`, um [Caddy](https://caddyserver.com) com certificado automático. |
+| `compose.yaml` | Sobe a aplicação (por padrão, porta `8000` só em `127.0.0.1`) e, no perfil `https`, um [Caddy](https://caddyserver.com) com certificado automático. |
 | `.env.example` | Modelo das variáveis; copie para `.env` (que não vai para o git nem para a imagem). |
 | `docker/entrypoint.sh` | Na primeira partida, copia `config/guiches.json` para o volume. |
 | `docker/Caddyfile` | Configuração do proxy HTTPS do perfil `https`. |
@@ -66,6 +66,19 @@ docker compose --profile https up -d --build    # aplicação + Caddy com HTTPS 
 ```
 
 Para o perfil `https`, o DNS do domínio precisa apontar para o servidor e as portas 80 e 443 precisam estar livres e abertas. Se a máquina já tem um Caddy ou nginx, use só o primeiro comando e aponte o proxy existente para `127.0.0.1:8000`, como no [passo 6](#colocar-num-servidor-sem-docker) abaixo.
+
+**HTTPS feito por outra máquina** (por exemplo, o proxy reverso da instituição, que fica com o certificado e repassa os acessos em HTTP para este servidor): não use o perfil `https`. No `.env`:
+
+```sh
+CHECKIN_PUBLIC_URL=https://checkin.seu-dominio.br
+CHECKIN_BIND=10.0.0.10          # IP deste servidor que o proxy alcança (veja com: ip -br -4 addr)
+CHECKIN_PORT=8000               # porta para onde o proxy repassa
+CHECKIN_PROXY_IPS=10.0.0.1      # IP(s) do proxy, separados por vírgula
+```
+
+Peça à equipe do proxy que repasse para `http://IP-DO-SERVIDOR:8000` e envie o `X-Forwarded-For` (substituindo ou acrescentando, os dois funcionam). Depois de subir, confira em `docker compose logs app`: cada linha começa pelo IP de quem conectou, que deve ser o do proxy. Se aparecer `172.31.250.1`, o Docker desta máquina está escondendo o IP de origem, e todos os acessos contariam como uma pessoa só no limite de tentativas.
+
+Com `CHECKIN_BIND` fora de `127.0.0.1`, defina **sempre** `CHECKIN_PROXY_IPS`: só então o compose deixa de confiar na rede interna do Docker, e ninguém consegue forjar o próprio IP acessando a porta diretamente. Também vale pedir que a porta só aceite conexões do proxy. Regras do `ufw` não bastam para isso, porque o Docker passa por cima delas nas portas publicadas.
 
 **4. Crie as contas e importe a lista** dentro do container:
 
@@ -96,7 +109,7 @@ docker compose cp app:/tmp/backup.sqlite3 ./backup-AAAA-MM-DD.sqlite3
 
 - As faixas dos guichês editadas no painel ficam em `/data/guiches.json`, no volume. Depois da primeira partida, mudar `config/guiches.json` e remontar a imagem não altera as faixas em uso; ajuste-as pelo painel.
 - `docker compose down` mantém os dados; `docker compose down -v` **apaga** o volume com o banco.
-- O compose fixa a rede interna em `172.31.250.0/24` e confia no `X-Forwarded-For` vindo dela (o Caddy do perfil `https` ou um proxy na própria máquina). Se essa faixa conflitar com outra rede, mude `CHECKIN_DOCKER_SUBNET` no `.env`. Mantenha a porta da aplicação publicada só em `127.0.0.1`.
+- O compose fixa a rede interna em `172.31.250.0/24` e, quando `CHECKIN_PROXY_IPS` não está definido, confia no `X-Forwarded-For` vindo dela (o Caddy do perfil `https` ou um proxy na própria máquina). Se essa faixa conflitar com outra rede, mude `CHECKIN_DOCKER_SUBNET` no `.env`. Sem `CHECKIN_PROXY_IPS`, mantenha a porta da aplicação publicada só em `127.0.0.1`.
 - Para usar uma pasta do servidor em vez do volume nomeado, troque `dados:/data` por `./data:/data` e dê a pasta ao usuário do container: `sudo chown 10001:10001 data`.
 
 ### Colocar num servidor (sem Docker)
@@ -117,7 +130,7 @@ sudo chown -R credenciamento: /opt/credenciamento
 |---|---|---|
 | `CHECKIN_SESSION_SECRET` | sim | Assina as sessões da equipe. Mínimo de 32 caracteres; gere com o comando acima e guarde-o. Se mudar, todos precisam entrar de novo. |
 | `CHECKIN_PUBLIC_URL` | recomendada | Endereço público, ex.: `https://credenciamento.seu-dominio.org`. Com `https://`, os cookies passam a exigir conexão segura. |
-| `CHECKIN_TRUSTED_PROXY` | com proxy | `1` quando o proxy HTTPS roda na mesma máquina; ou uma lista de IPs/redes separados por vírgula (ex.: `172.31.250.0/24`) de onde o proxy se conecta. Faz o limite de tentativas usar o IP real de cada pessoa (lido do `X-Forwarded-For` só dessas origens). |
+| `CHECKIN_TRUSTED_PROXY` | com proxy | `1` quando o proxy HTTPS roda na mesma máquina; ou uma lista de IPs/redes separados por vírgula (ex.: `172.31.250.0/24`) de onde o proxy se conecta. Faz o limite de tentativas usar o IP real de cada pessoa (lido do `X-Forwarded-For` só dessas origens, da direita para a esquerda, parando no primeiro endereço que não é de proxy confiável). |
 | `CHECKIN_DATA_DIR` | não | Pasta do banco e do CSV espelho. Padrão: `data/` dentro da instalação. |
 | `CHECKIN_EVENT_CONFIG` | não | Outro caminho para o YAML do evento. |
 | `CHECKIN_RANGES_FILE` | não | Outro caminho para o arquivo de guichês. |
@@ -176,7 +189,7 @@ credenciamento.seu-dominio.org {
 }
 ```
 
-Com nginx, use `proxy_pass http://127.0.0.1:8000;` e `proxy_set_header X-Forwarded-For $remote_addr;`. O proxy precisa **substituir** esse cabeçalho pelo IP real: a variante comum `$proxy_add_x_forwarded_for` acrescenta ao valor enviado pelo cliente e permitiria burlar o limite de tentativas.
+Com nginx, use `proxy_pass http://127.0.0.1:8000;` e `proxy_set_header X-Forwarded-For $remote_addr;`. A variante comum `$proxy_add_x_forwarded_for`, que acrescenta ao valor enviado pelo cliente, também funciona: a aplicação ignora o que vem antes do último proxy confiável.
 
 **7. Gere o QR Code** apontando para a raiz do domínio (`https://credenciamento.seu-dominio.org/`) quando o endereço estiver definitivo.
 
