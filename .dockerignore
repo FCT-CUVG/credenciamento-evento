@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+.dockerignore
+.env
+.env.*
+Dockerfile
+compose.yaml
+data/
+tests/
+__pycache__/
+*.pyc
+.DS_Store

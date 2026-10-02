@@ -2,10 +2,12 @@
 import re
 import unittest
 from pathlib import Path
+from email.message import Message
 from unittest.mock import patch
 
 from credenciamento import event_theme, settings
 from credenciamento.web.routes import ROUTES
+from credenciamento.web.server import App
 from support import CredenciamentoTestCase
 
 
@@ -115,6 +117,27 @@ class WebTest(CredenciamentoTestCase):
         for path in ("/js/../../app.py", "/js/%2e%2e/app.css", "/js/missing.js", "/app.js"):
             handler_code = self.request(path, json_response=False)[0]
             self.assertEqual(handler_code, 404, path)
+
+    def test_forwarded_ip_is_used_only_from_trusted_proxies(self):
+        def client_ip(peer, forwarded="203.0.113.7"):
+            handler = App.__new__(App)
+            handler.client_address = (peer, 0)
+            handler.headers = Message()
+            handler.headers["X-Forwarded-For"] = forwarded
+            return handler.client_ip()
+
+        for value, peer, expected in (("", "127.0.0.1", "127.0.0.1"),
+                                      ("1", "127.0.0.1", "203.0.113.7"),
+                                      ("1", "172.18.0.1", "172.18.0.1"),
+                                      ("172.16.0.0/12", "172.18.0.1", "203.0.113.7"),
+                                      ("10.0.0.5, 172.16.0.0/12", "10.0.0.5", "203.0.113.7"),
+                                      ("172.16.0.0/12", "198.51.100.9", "198.51.100.9")):
+            with self.subTest(value=value, peer=peer), patch.object(settings, "TRUSTED_PROXY", value):
+                self.assertEqual(client_ip(peer), expected)
+        with patch.object(settings, "TRUSTED_PROXY", "1"):
+            self.assertEqual(client_ip("127.0.0.1", "not-an-ip"), "127.0.0.1")
+        with self.assertRaises(ValueError):
+            settings.trusted_proxy_networks("rede-docker")
 
 
 if __name__ == "__main__":

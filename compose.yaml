@@ -1,0 +1,47 @@
+# Sobe a aplicação com:            docker compose up -d --build
+# Com HTTPS automático (Caddy):    docker compose --profile https up -d --build
+# Veja a seção "Docker" do README.
+services:
+  app:
+    build: .
+    image: credenciamento-evento
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CHECKIN_SESSION_SECRET: ${CHECKIN_SESSION_SECRET:?defina CHECKIN_SESSION_SECRET no arquivo .env}
+      # Aceita X-Forwarded-For só de quem está na rede do compose: o Caddy do perfil "https"
+      # ou um proxy na própria máquina (que chega pelo gateway dessa rede).
+      CHECKIN_TRUSTED_PROXY: ${CHECKIN_DOCKER_SUBNET:-172.31.250.0/24}
+    ports:
+      # Só na própria máquina; os acessos externos passam pelo proxy HTTPS.
+      - "127.0.0.1:${CHECKIN_PORT:-8000}:8000"
+    volumes:
+      - dados:/data
+
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      CHECKIN_DOMAIN: ${CHECKIN_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${CHECKIN_DOCKER_SUBNET:-172.31.250.0/24}
+
+volumes:
+  dados:
+  caddy_data:
+  caddy_config:

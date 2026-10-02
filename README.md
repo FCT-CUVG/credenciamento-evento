@@ -18,6 +18,7 @@ As telas operacionais da equipe exigem conta e senha; o resumo público mostra a
 | Item | Detalhe |
 |---|---|
 | Python 3.10 ou mais novo | Só a biblioteca padrão: não há `pip install`, e o SQLite já vem com o Python. |
+| ou Docker | Alternativa ao Python instalado no servidor; veja [Com Docker](#com-docker). |
 | Um servidor | Linux (ou macOS) acessível pela internet ou pela rede do evento. Uma máquina pequena basta. |
 | Um domínio com HTTPS | Para os celulares dos participantes acessarem pelo QR Code. O HTTPS fica num proxy reverso (Caddy ou nginx) na frente da aplicação. |
 | Acesso ao terminal | Para criar as contas da equipe e importar a lista. |
@@ -34,7 +35,71 @@ python3 app.py serve                         # abre em http://127.0.0.1:8000
 
 A página pública fica em `/`; a equipe entra em `/login`. Os dados vão para a pasta `data/`.
 
-### Colocar num servidor
+### Com Docker
+
+A imagem usa `python:3.13-slim`, roda com um usuário sem privilégios e guarda tudo o que muda (banco, CSV espelho e faixas dos guichês) no volume `/data`. Precisa de Docker com o plugin `docker compose`.
+
+| Arquivo | Para que serve |
+|---|---|
+| `Dockerfile` | Monta a imagem com o código, a identidade visual e as faixas iniciais dos guichês. |
+| `compose.yaml` | Sobe a aplicação (porta `8000` só em `127.0.0.1`) e, no perfil `https`, um [Caddy](https://caddyserver.com) com certificado automático. |
+| `.env.example` | Modelo das variáveis; copie para `.env` (que não vai para o git nem para a imagem). |
+| `docker/entrypoint.sh` | Na primeira partida, copia `config/guiches.json` para o volume. |
+| `docker/Caddyfile` | Configuração do proxy HTTPS do perfil `https`. |
+
+**1. Personalize o evento antes de montar a imagem:** `config/evento.yaml`, arquivos em `static/assets/` (veja [Identidade visual](#identidade-visual-do-evento)) e as faixas iniciais de `config/guiches.json`. Esses arquivos entram na imagem; depois de mudá-los, monte de novo com `--build`.
+
+**2. Crie o `.env`** com o segredo das sessões:
+
+```sh
+cp .env.example .env
+openssl rand -hex 32      # cole o resultado em CHECKIN_SESSION_SECRET, no .env
+```
+
+No servidor, descomente também `CHECKIN_PUBLIC_URL` e `CHECKIN_DOMAIN` com o seu domínio. As demais variáveis da [tabela de variáveis](#colocar-num-servidor-sem-docker) (Google Sheets etc.) também vão no `.env`. `CHECKIN_DATA_DIR`, `CHECKIN_RANGES_FILE` e `CHECKIN_TRUSTED_PROXY` já vêm definidas pela imagem e pelo compose.
+
+**3. Suba o serviço:**
+
+```sh
+docker compose up -d --build                    # só a aplicação, em http://127.0.0.1:8000
+docker compose --profile https up -d --build    # aplicação + Caddy com HTTPS em CHECKIN_DOMAIN
+```
+
+Para o perfil `https`, o DNS do domínio precisa apontar para o servidor e as portas 80 e 443 precisam estar livres e abertas. Se a máquina já tem um Caddy ou nginx, use só o primeiro comando e aponte o proxy existente para `127.0.0.1:8000`, como no [passo 6](#colocar-num-servidor-sem-docker) abaixo.
+
+**4. Crie as contas e importe a lista** dentro do container:
+
+```sh
+docker compose exec app python app.py user coordenacao admin     # pede a senha
+docker compose exec app python app.py user voluntario1 volunteer
+docker compose exec app python app.py user atendimento1 attendant --guiche 1
+
+docker compose exec -T app sh -c 'cat > /tmp/participantes.csv' < participantes.csv
+docker compose exec app python app.py import /tmp/participantes.csv
+# para experimentar: docker compose exec app python app.py import exemplos/participantes-teste.csv
+```
+
+O primeiro comando envia o arquivo pela entrada padrão, criando-o já com o usuário do container (um `docker compose cp` o criaria como root e, se o original tiver permissão restrita, a importação não conseguiria lê-lo). A lista também pode ser importada pelo painel detalhado.
+
+**Operação do dia a dia:**
+
+```sh
+docker compose logs -f app                                    # acompanhar o log
+docker compose exec app python app.py sync                    # forçar o envio ao Google Sheets
+docker compose exec app python app.py backup /tmp/backup.sqlite3
+docker compose cp app:/tmp/backup.sqlite3 ./backup-AAAA-MM-DD.sqlite3
+```
+
+**Atualizar para uma nova versão:** faça um backup como acima e rode `git pull && docker compose up -d --build` (acrescente `--profile https` se usar o Caddy). Os dados ficam no volume e o banco é migrado ao iniciar.
+
+**Observações:**
+
+- As faixas dos guichês editadas no painel ficam em `/data/guiches.json`, no volume. Depois da primeira partida, mudar `config/guiches.json` e remontar a imagem não altera as faixas em uso; ajuste-as pelo painel.
+- `docker compose down` mantém os dados; `docker compose down -v` **apaga** o volume com o banco.
+- O compose fixa a rede interna em `172.31.250.0/24` e confia no `X-Forwarded-For` vindo dela (o Caddy do perfil `https` ou um proxy na própria máquina). Se essa faixa conflitar com outra rede, mude `CHECKIN_DOCKER_SUBNET` no `.env`. Mantenha a porta da aplicação publicada só em `127.0.0.1`.
+- Para usar uma pasta do servidor em vez do volume nomeado, troque `dados:/data` por `./data:/data` e dê a pasta ao usuário do container: `sudo chown 10001:10001 data`.
+
+### Colocar num servidor (sem Docker)
 
 **1. Copie o código** para o servidor (por exemplo, em `/opt/credenciamento`) e crie um usuário do sistema só para o serviço:
 
@@ -52,7 +117,7 @@ sudo chown -R credenciamento: /opt/credenciamento
 |---|---|---|
 | `CHECKIN_SESSION_SECRET` | sim | Assina as sessões da equipe. Mínimo de 32 caracteres; gere com o comando acima e guarde-o. Se mudar, todos precisam entrar de novo. |
 | `CHECKIN_PUBLIC_URL` | recomendada | Endereço público, ex.: `https://credenciamento.seu-dominio.org`. Com `https://`, os cookies passam a exigir conexão segura. |
-| `CHECKIN_TRUSTED_PROXY` | com proxy | `1` quando o proxy HTTPS roda na mesma máquina. Faz o limite de tentativas usar o IP real de cada pessoa. |
+| `CHECKIN_TRUSTED_PROXY` | com proxy | `1` quando o proxy HTTPS roda na mesma máquina; ou uma lista de IPs/redes separados por vírgula (ex.: `172.31.250.0/24`) de onde o proxy se conecta. Faz o limite de tentativas usar o IP real de cada pessoa (lido do `X-Forwarded-For` só dessas origens). |
 | `CHECKIN_DATA_DIR` | não | Pasta do banco e do CSV espelho. Padrão: `data/` dentro da instalação. |
 | `CHECKIN_EVENT_CONFIG` | não | Outro caminho para o YAML do evento. |
 | `CHECKIN_RANGES_FILE` | não | Outro caminho para o arquivo de guichês. |

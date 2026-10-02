@@ -1,6 +1,7 @@
 """Linha de comando: serve, import, user, sync e backup."""
 import argparse
 import secrets
+import signal
 import threading
 from http.server import ThreadingHTTPServer
 
@@ -53,10 +54,22 @@ def main():
         if len(settings.SECRET) < 32:
             parser.error("Defina CHECKIN_SESSION_SECRET com pelo menos 32 caracteres.")
         try:
+            settings.trusted_proxy_networks()
+        except ValueError:
+            parser.error("CHECKIN_TRUSTED_PROXY deve ser 1 ou uma lista de IPs/redes separados por vírgula.")
+        try:
             event_config()
         except ValueError as exc:
             parser.error(str(exc))
         export_csv()
         threading.Thread(target=sync_worker, daemon=True).start()
+        server = ThreadingHTTPServer((args.host, args.port), App)
+        # SIGTERM (systemctl stop, docker stop) encerra como o Ctrl+C, sem esperar o SIGKILL.
+        signal.signal(signal.SIGTERM, lambda *_: signal.raise_signal(signal.SIGINT))
         print(f"http://{args.host}:{args.port}")
-        ThreadingHTTPServer((args.host, args.port), App).serve_forever()
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("Servidor encerrado.")
+        finally:
+            server.server_close()
