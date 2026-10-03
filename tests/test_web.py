@@ -122,16 +122,33 @@ class WebTest(CredenciamentoTestCase):
         for page in ("/", "/login", "/painel/resumo"):
             self.assertEqual(self.request(page, json_response=False)[0], 200)
 
+    def test_staff_scripts_and_server_details_are_not_public(self):
+        volunteer, admin = self.login("vol2")[0], self.login("admin")[0]
+        for script in ("/js/dashboard.js", "/js/dashboard/table.js", "/js/dashboard/tools.js",
+                       "/js/dashboard/theme.js", "/js/queue.js"):
+            self.assertEqual(self.request(script, json_response=False)[0], 404, script)
+            self.assertEqual(self.request(script, cookie=admin, json_response=False)[0], 200, script)
+        self.assertEqual(self.request("/js/queue.js", cookie=volunteer, json_response=False)[0], 200)
+        self.assertEqual(self.request("/js/dashboard.js", cookie=volunteer, json_response=False)[0], 404)
+        for script in ("/js/common.js", "/js/public.js", "/js/login.js", "/js/summary.js"):
+            self.assertEqual(self.request(script, json_response=False)[0], 200, script)
+        code, body, headers = self.request("/nao-existe", json_response=False)
+        self.assertEqual(code, 404)
+        self.assertNotIn(b"Python", body)
+        self.assertNotIn("Python", headers["Server"])
+        for path in ("/", "/api/event", "/painel"):
+            self.assertEqual(self.request(path, json_response=path == "/api/event")[2]["X-Robots-Tag"], "noindex, nofollow")
+
     def test_pages_load_existing_javascript_modules_only_from_static_js(self):
         admin = self.login("admin")[0]
         for page in ("/", "/login", "/busca", "/fila", "/painel", "/painel/resumo"):
             code, html, _ = self.request(page, cookie=admin, json_response=False)
             scripts = re.findall(rb'<script type="module" src="([^"]+)"', html)
             self.assertEqual((code, len(scripts)), (200, 1), page)
-            code, body, headers = self.request(scripts[0].decode(), json_response=False)
+            code, body, headers = self.request(scripts[0].decode(), cookie=admin, json_response=False)
             self.assertEqual(code, 200)
             self.assertTrue(headers["Content-Type"].startswith("text/javascript"))
-        code, body, _ = self.request("/js/dashboard/table.js", json_response=False)
+        code, body, _ = self.request("/js/dashboard/table.js", cookie=admin, json_response=False)
         self.assertEqual(code, 200)
         for path in ("/js/../../app.py", "/js/%2e%2e/app.css", "/js/missing.js", "/app.js"):
             handler_code = self.request(path, json_response=False)[0]

@@ -23,13 +23,17 @@ def is_trusted(address, networks):
     return any(ip in network for network in networks)
 
 
-# Telas da equipe: sem sessão (ou sem o papel), o servidor nem envia a página.
+# Telas da equipe: sem sessão (ou sem o papel), o servidor nem envia a página nem o código dela.
 STAFF_PAGES = {"/painel": ADMIN, "/busca": STAFF, "/fila": STAFF}
+STAFF_SCRIPTS = {"/js/dashboard": ADMIN, "/js/queue.js": STAFF}
 HOME = {"admin": "/painel", "volunteer": "/busca", "attendant": "/fila"}
 
 
 class App(BaseHTTPRequestHandler):
-    server_version = "CheckIn/1"
+    # Sem versão do Python no cabeçalho Server nem a página de erro padrão.
+    server_version = "CheckIn"
+    sys_version = ""
+    error_message_format = "<!doctype html><title>%(code)d</title><p>%(code)d</p>"
 
     def log_message(self, fmt, *args):
         # Avoid logging lookup data or query strings. Mostra o IP usado nos limites de tentativas
@@ -99,6 +103,8 @@ class App(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
         self.send_header("Referrer-Policy", "no-referrer")
+        # Página de credenciamento não precisa aparecer em buscadores.
+        self.send_header("X-Robots-Tag", "noindex, nofollow")
         if settings.PUBLIC_URL.startswith("https://"):
             # O navegador passa a recusar a versão sem HTTPS do endereço (e o cookie ir aberto pela rede).
             self.send_header("Strict-Transport-Security", "max-age=31536000")
@@ -139,6 +145,11 @@ class App(BaseHTTPRequestHandler):
             filename = routes.get(path)
             if not filename:
                 return self.send_error(404)
+            script_roles = next((roles for prefix, roles in STAFF_SCRIPTS.items() if path.startswith(prefix)), None)
+            if script_roles:
+                user = self.session()
+                if not user or user["role"] not in script_roles:
+                    return self.send_error(404)
             if path in STAFF_PAGES:
                 user = self.session()
                 if not user or user["role"] not in STAFF_PAGES[path]:
