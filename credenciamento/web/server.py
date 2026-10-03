@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from .. import settings
 from ..auth import csrf_token, session_user
 from ..db import connect
-from ..event_theme import event_config, theme_css
+from ..event_theme import UPLOAD_PREFIX, event_config, theme_css, uploaded_asset
 from . import admin, public, staff  # noqa: F401  (importar registra as rotas)
 from .routes import STAFF, find
 
@@ -113,6 +113,8 @@ class App(BaseHTTPRequestHandler):
                 allowed.add(config["decoration"])
             if asset not in allowed:
                 return self.send_error(404)
+            if asset.startswith(UPLOAD_PREFIX):
+                return self.send_upload(asset)
             body = (settings.STATIC / "assets" / asset).read_bytes()
             mime = ("image/png" if asset.endswith(".png") else
                     "image/jpeg" if asset.endswith((".jpg", ".jpeg")) else
@@ -148,6 +150,20 @@ class App(BaseHTTPRequestHandler):
         self.security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def send_upload(self, name):
+        """Logo enviada pelo painel: vem do banco e nunca roda código, nem aberta direto no navegador."""
+        stored = uploaded_asset(name)
+        if not stored:
+            return self.send_error(404)
+        self.send_response(200)
+        self.send_header("Content-Type", stored["content_type"])
+        self.send_header("Content-Length", str(len(stored["data"])))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+        self.end_headers()
+        self.wfile.write(stored["data"])
 
     def do_POST(self):
         return self.dispatch("POST", urlparse(self.path).path)

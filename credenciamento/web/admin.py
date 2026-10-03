@@ -12,6 +12,7 @@ from ..csv_io import (event_logs_download, export_csv, import_text, participants
 from ..db import connect, get_participant, participant_dict, pending_reasons, update_participant
 from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, configured_ranges, guiche_for,
                      letter_counts, priority_guiche, save_ranges, validate_priority_guiche)
+from ..event_theme import remove_logo, reset_theme, save_logo, save_theme, theme_settings
 from ..lookup import cpf_key, email_key
 from ..participants import STATUS_STEPS, public_checkin_state, set_public_checkin, status_fields
 from .routes import ADMIN, route
@@ -50,6 +51,42 @@ def public_checkin(req, user, data):
     with connect() as db:
         state = set_public_checkin(db, data["open"], user["username"])
     return req.respond(200, {"public_checkin": state})
+
+
+@route("GET", "/api/theme", roles=ADMIN)
+def theme(req, user, data):
+    return req.respond(200, theme_settings())
+
+
+@route("POST", "/api/theme", roles=ADMIN, forbidden="Somente a coordenação pode mudar a identidade visual.")
+def update_theme(req, user, data):
+    try:
+        save_theme(data, user["username"])
+    except ValueError as exc:
+        return req.respond(400, {"error": str(exc)})
+    return req.respond(200, theme_settings())
+
+
+@route("POST", "/api/theme/logo", roles=ADMIN, max_body=1_500_000,
+       forbidden="Somente a coordenação pode mudar a identidade visual.")
+def upload_logo(req, user, data):
+    try:
+        save_logo(data.get("data", ""), user["username"])
+    except ValueError as exc:
+        return req.respond(400, {"error": str(exc)})
+    return req.respond(200, theme_settings())
+
+
+@route("POST", "/api/theme/logo/remove", roles=ADMIN, forbidden="Somente a coordenação pode mudar a identidade visual.")
+def default_logo(req, user, data):
+    remove_logo(user["username"])
+    return req.respond(200, theme_settings())
+
+
+@route("POST", "/api/theme/reset", roles=ADMIN, forbidden="Somente a coordenação pode mudar a identidade visual.")
+def default_theme(req, user, data):
+    reset_theme(user["username"])
+    return req.respond(200, theme_settings())
 
 
 @route("POST", "/api/participants/find", roles=ADMIN)

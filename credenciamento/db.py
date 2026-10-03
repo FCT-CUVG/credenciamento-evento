@@ -65,6 +65,9 @@ def create_schema(db):
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(username);
     CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS event_assets (
+      name TEXT PRIMARY KEY, content_type TEXT NOT NULL, data BLOB NOT NULL, updated_at TEXT NOT NULL
+    );
     -- A busca pública passou a registrar a chegada num passo só, sem token de confirmação.
     DROP TABLE IF EXISTS lookup_tokens;
     """)

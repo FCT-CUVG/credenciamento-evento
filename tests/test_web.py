@@ -1,4 +1,5 @@
 """Identidade visual, páginas, módulos JavaScript e proteção das rotas."""
+import base64
 import re
 import unittest
 from pathlib import Path
@@ -191,6 +192,71 @@ class WebTest(CredenciamentoTestCase):
                 with self.assertRaises(ValueError):
                     settings.rate_limit("search")
         self.assertEqual(settings.rate_limit("search_miss"), (20, 600))
+
+    def test_admin_customizes_names_colors_and_hints_from_the_dashboard(self):
+        admin = self.login("admin")
+        self.assertEqual(self.request("/api/theme", cookie=self.login("vol1")[0])[0], 401)
+        current = self.request("/api/theme", cookie=admin[0])[1]
+        self.assertFalse(current["customized"])
+        self.assertEqual(current["current"], current["default"])
+        values = dict(current["current"], name="BRACIS 2026", short_name="BRACIS",
+                      registration_hint_en="Use your CPF.", registration_hint_pt="Use seu CPF.")
+        values["colors"] = dict(values["colors"], primary="#AA0011")
+        self.assertEqual(self.request("/api/theme", values, *self.login("vol1"))[0], 403)
+        code, saved, _ = self.request("/api/theme", values, *admin)
+        self.assertEqual((code, saved["customized"], saved["current"]["colors"]["primary"]), (200, True, "#aa0011"))
+        self.assertIn("--primary: #aa0011;", self.request("/theme.css", json_response=False)[1].decode())
+        self.assertIn(b"BRACIS 2026", self.request("/", json_response=False)[1])
+        event = self.request("/api/event")[1]
+        self.assertEqual((event["name"], event["registration_hints"]["pt-BR"]), ("BRACIS 2026", "Use seu CPF."))
+        for invalid in (dict(values, name=""), dict(values, name="x" * 101),
+                        dict(values, colors=dict(values["colors"], text="red")),
+                        dict(values, colors={"primary": "#000000"}),
+                        dict(values, registration_hint_en="")):
+            code, error, _ = self.request("/api/theme", invalid, *admin)
+            self.assertEqual(code, 400, invalid)
+            self.assertTrue(error["error"].startswith(("Verifique", "Preencha")))
+        # Sem instrução nos dois idiomas, a página pública volta ao texto genérico.
+        self.request("/api/theme", dict(values, registration_hint_en="", registration_hint_pt=""), *admin)
+        self.assertIsNone(self.request("/api/event")[1]["registration_hints"]["pt-BR"])
+        code, reset, _ = self.request("/api/theme/reset", {}, *admin)
+        self.assertEqual((code, reset["customized"], reset["current"]), (200, False, reset["default"]))
+
+    def test_admin_uploads_logo_that_is_served_without_running_code(self):
+        admin = self.login("admin")
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+        upload = lambda data: self.request("/api/theme/logo", {"data": base64.b64encode(data).decode()}, *admin)
+        code, saved, _ = upload(png)
+        logo = saved["current"]["logo"]
+        self.assertEqual((code, saved["custom_logo"]), (200, True))
+        self.assertRegex(logo, r"^/assets/upload-logo-[0-9a-f]{16}\.png$")
+        self.assertEqual(self.request("/api/event")[1]["logo"], logo)
+        self.assertIn(logo.encode(), self.request("/painel/resumo", json_response=False)[1])
+        code, body, headers = self.request(logo, json_response=False)
+        self.assertEqual((code, body, headers["Content-Type"]), (200, png, "image/png"))
+        self.assertIn("sandbox", headers["Content-Security-Policy"])
+        # Só uma logo enviada fica guardada; nomes inventados não são servidos.
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'
+        new_logo = upload(svg)[1]["current"]["logo"]
+        self.assertTrue(new_logo.endswith(".svg"))
+        self.assertEqual(self.request(logo, json_response=False)[0], 404)
+        self.assertEqual(self.request("/assets/upload-logo-0000000000000000.png", json_response=False)[0], 404)
+        for bad in (b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+                    b'<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)">x</a></svg>',
+                    b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>',
+                    b"GIF89a....", b"just text", b"", png + b"\x00" * 1_000_000):
+            code, error, _ = upload(bad)
+            self.assertEqual(code, 400, bad[:40])
+        self.assertEqual(self.request("/api/theme/logo", {"data": "not base64!"}, *admin)[0], 400)
+        self.assertEqual(self.request("/api/theme/logo", {"data": ""}, *self.login("vol1"))[0], 403)
+        # Trocar as cores mantém a logo; voltar à logo padrão mantém as cores.
+        current = self.request("/api/theme", cookie=admin[0])[1]["current"]
+        current["colors"]["action"] = "#123456"
+        self.assertEqual(self.request("/api/theme", current, *admin)[1]["current"]["logo"], new_logo)
+        code, restored, _ = self.request("/api/theme/logo/remove", {}, *admin)
+        self.assertEqual((code, restored["custom_logo"], restored["current"]["colors"]["action"]), (200, False, "#123456"))
+        self.assertEqual(restored["current"]["logo"], restored["default"]["logo"])
+        self.assertEqual(self.request(new_logo, json_response=False)[0], 404)
 
 
 if __name__ == "__main__":
