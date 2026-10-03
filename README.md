@@ -244,9 +244,16 @@ O banco é atualizado automaticamente ao iniciar; não há passo manual de migra
 
 ## Identidade visual do evento
 
-Nome, logo, fontes e cores do evento ficam num único arquivo, sem mexer no código.
+Nome, logo, fontes e cores do evento vêm de um único arquivo, `config/evento.yaml`, sem mexer no código. A coordenação também pode ajustar a maior parte disso pelo painel, sem acesso ao servidor.
 
-**Como configurar**
+**Pelo painel** (conta `admin`): na aba **Identidade visual** do painel detalhado dá para mudar o nome do evento, o nome curto, a instrução da busca (nos dois idiomas), as 9 cores e enviar uma logo (PNG, JPEG, WebP ou SVG, até 1 MB). Uma prévia mostra as cores antes de salvar e avisa quando um par de texto e fundo fica com contraste abaixo do recomendado (4,5:1). As mudanças valem na hora para quem abrir ou recarregar uma página.
+
+- O que é ajustado no painel fica no banco (inclusive a logo), entra nos backups e sobrevive a atualizações da imagem. Vale por cima do `evento.yaml` até alguém usar **Restaurar tudo ao padrão**; **Voltar à logo padrão** desfaz só a logo.
+- Fontes e a imagem decorativa continuam só no `evento.yaml`.
+- A logo enviada é servida com uma política que impede qualquer código de rodar; SVGs com scripts, eventos ou conteúdo externo são recusados (exporte de novo como imagem simples ou use PNG).
+- A logo aparece sobre fundo branco, com até 64 px de altura no topo das páginas; prefira uma imagem horizontal.
+
+**Pelo arquivo** (o padrão):
 
 1. Copie o exemplo: `cp config/evento.example.yaml config/evento.yaml`.
 2. Coloque logo, decoração e fontes em `static/assets/`.
@@ -429,7 +436,7 @@ Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `te
 | `settings.py` | Caminhos e variáveis de ambiente (lidos como `settings.NOME` no momento do uso) |
 | `common.py` | Data atual, normalização de nomes e máscara de dados públicos |
 | `lookup.py` | Chaves de busca (HMAC) de CPF e e-mail, que não são guardados em texto |
-| `event_theme.py` | YAML do evento e geração do `theme.css` |
+| `event_theme.py` | YAML do evento, personalização pelo painel (nomes, cores e logo no banco) e geração do `theme.css` |
 | `db.py` | Conexão SQLite, esquema/migrações e `update_participant()`, o único caminho para alterar um participante |
 | `desks.py` | Faixas de letras, guichê de prioridade e propagação de mudanças de guichê |
 | `participants.py` | Etapas da situação, ações da fila de busca e guichê e abertura do pré-check-in |
@@ -441,4 +448,4 @@ Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `te
 | `web/public.py` / `staff.py` / `admin.py` | Rotas públicas, da equipe e da coordenação |
 | `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `revoke`, `public-checkin`, `sync`, `backup` |
 
-No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js` e `dashboard/tools.js` (painel detalhado) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.
+No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js`, `dashboard/tools.js` e `dashboard/theme.js` (painel detalhado e identidade visual) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.

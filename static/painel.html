@@ -132,6 +132,7 @@
       <div class="tab-list" role="tablist" aria-label="Configurações do credenciamento">
         <button class="tab" id="participants-tools-title" type="button" role="tab" aria-selected="true" aria-controls="participants-tools">Participantes</button>
         <button class="tab" id="guiches-tools-title" type="button" role="tab" aria-selected="false" aria-controls="guiches-tools" tabindex="-1">Configuração dos guichês</button>
+        <button class="tab" id="theme-tools-title" type="button" role="tab" aria-selected="false" aria-controls="theme-tools" tabindex="-1">Identidade visual</button>
       </div>
       <section class="dashboard-tool" id="participants-tools" role="tabpanel" aria-labelledby="participants-tools-title">
         <p>Importe um CSV separado por vírgula ou ponto e vírgula, com pelo menos um participante após o cabeçalho. Os dados cadastrais são atualizados sem apagar as etapas já concluídas.</p>
@@ -177,6 +178,49 @@
           <button class="button small" id="save-ranges" type="button">Salvar guichês</button>
         </div>
         <p id="ranges-status" class="muted" role="status"></p>
+      </section>
+      <section class="dashboard-tool" id="theme-tools" role="tabpanel" aria-labelledby="theme-tools-title" hidden>
+        <p>Nome, cores e logo do evento em todas as páginas, inclusive a pública. As mudanças valem na hora para quem abrir ou recarregar uma página. <span id="theme-origin" class="muted"></span></p>
+        <div class="theme-layout">
+          <form id="theme-form" class="theme-form">
+            <fieldset>
+              <legend>Nomes</legend>
+              <label class="field">Nome do evento<input name="name" maxlength="100" required></label>
+              <label class="field">Nome curto<input name="short_name" maxlength="100" required></label>
+              <label class="field">Instrução da busca, em português<input name="registration_hint_pt" maxlength="300" placeholder="Vazio: usa o texto padrão"></label>
+              <label class="field">Instrução da busca, em inglês<input name="registration_hint_en" maxlength="300" placeholder="Vazio: usa o texto padrão"></label>
+            </fieldset>
+            <fieldset>
+              <legend>Cores</legend>
+              <div id="theme-colors" class="theme-colors"></div>
+              <ul id="theme-contrast" class="theme-contrast" aria-live="polite"></ul>
+            </fieldset>
+            <div class="dashboard-tool-actions">
+              <button class="button small" type="submit">Salvar nomes e cores</button>
+              <button class="button secondary small" id="theme-reset" type="button">Restaurar tudo ao padrão</button>
+            </div>
+          </form>
+          <div class="theme-side">
+            <h3>Prévia</h3>
+            <div id="theme-preview" class="theme-preview" aria-hidden="true">
+              <div class="tp-header"><img id="theme-preview-logo" alt=""><span>Credenciamento</span></div>
+              <div class="tp-hero"><strong id="theme-preview-name"></strong><span>Avise que você chegou.</span></div>
+              <div class="tp-body">
+                <div class="tp-card"><b>Localize sua inscrição</b><span>Texto secundário</span><span class="tp-button">Realizar pré-check-in</span></div>
+              </div>
+            </div>
+            <h3>Logo</h3>
+            <form id="logo-form" class="logo-form">
+              <label class="field">Imagem PNG, JPEG, WebP ou SVG, até 1 MB<input id="logo-file" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" required></label>
+              <p class="muted">Aparece no topo das páginas, sobre fundo branco, com até 64 px de altura. Prefira uma imagem horizontal.</p>
+              <div class="dashboard-tool-actions">
+                <button class="button small" type="submit">Enviar logo</button>
+                <button class="button secondary small" id="logo-remove" type="button" hidden>Voltar à logo padrão</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <p id="theme-status" class="muted" role="status"></p>
       </section>
       </div>
       <section class="card dashboard-tool" aria-labelledby="google-sheets-title">

@@ -1,6 +1,7 @@
 // Painel detalhado da coordenação: números, tabela de participantes e ferramentas.
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
 import {fillDeskFilter, renderDashboard, renderDashboardKeepingFocus, renderDeskStats, state} from './dashboard/table.js';
+import {initTheme} from './dashboard/theme.js';
 import {initTabs, initTools} from './dashboard/tools.js';
 
 const FILTERS = ['status-filter', 'priority-filter', 'payment-filter', 'desk-filter'];
@@ -247,6 +248,6 @@ if (await requireSession(['admin'])) {
   initFilters();
   initTableEvents();
   $('checkin-toggle').addEventListener('click', toggleCheckin);
-  await Promise.all([refresh(), initTools(refresh)]);
+  await Promise.all([refresh(), initTools(refresh), initTheme()]);
   setInterval(refresh, 10000);
 }
