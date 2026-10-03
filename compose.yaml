@@ -16,6 +16,8 @@ services:
   app:
     build: .
     image: credenciamento-evento
+    # Imagem montada aqui, a partir do Dockerfile; nunca baixada.
+    pull_policy: build
     restart: unless-stopped
     env_file: .env
     environment:
@@ -33,7 +35,9 @@ services:
   # Cópia do banco a cada hora, guardando as últimas 48, num volume separado. Protege contra
   # erro de operação e arquivo corrompido; para perda do servidor, copie também para fora dele.
   backup:
+    # Usa a imagem montada pelo serviço app; não existe para baixar da internet.
     image: credenciamento-evento
+    pull_policy: never
     restart: unless-stopped
     init: true
     depends_on:
