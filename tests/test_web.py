@@ -53,8 +53,9 @@ class WebTest(CredenciamentoTestCase):
             self.assertIn(b"ARRIVED AT Encontro?", page)
             self.assertNotIn(b"nome completo", page)
             self.assertNotIn(b"{{EVENT_NAME}}", page)
+            admin = self.login("admin")[0]
             for route in ("/busca", "/fila", "/painel"):
-                code, team_page, _ = self.request(route, json_response=False)
+                code, team_page, _ = self.request(route, cookie=admin, json_response=False)
                 self.assertEqual(code, 200)
                 self.assertNotIn(b'class="page-context"', team_page)
             self.assertEqual(self.request("/assets/unlisted.svg", json_response=False)[0], 404)
@@ -106,9 +107,25 @@ class WebTest(CredenciamentoTestCase):
                 elif "volunteer" not in route.roles:
                     self.assertEqual(self.request(target, cookie=volunteer[0])[0], 401)
 
+    def test_staff_pages_are_not_sent_without_session_or_role(self):
+        for page in ("/painel", "/busca", "/fila"):
+            code, body, headers = self.request(page, json_response=False)
+            self.assertEqual((code, headers["Location"], body), (302, "/login", b""), page)
+        volunteer, attendant = self.login("vol1")[0], self.login("att1")[0]
+        self.assertEqual(self.request("/painel", cookie=volunteer, json_response=False)[2]["Location"], "/busca")
+        self.assertEqual(self.request("/painel", cookie=attendant, json_response=False)[2]["Location"], "/fila")
+        for page in ("/busca", "/fila"):
+            self.assertEqual(self.request(page, cookie=volunteer, json_response=False)[0], 200)
+        with database.connect() as db:
+            auth.end_user_sessions(db, "vol1")
+        self.assertEqual(self.request("/busca", cookie=volunteer, json_response=False)[2]["Location"], "/login")
+        for page in ("/", "/login", "/painel/resumo"):
+            self.assertEqual(self.request(page, json_response=False)[0], 200)
+
     def test_pages_load_existing_javascript_modules_only_from_static_js(self):
+        admin = self.login("admin")[0]
         for page in ("/", "/login", "/busca", "/fila", "/painel", "/painel/resumo"):
-            code, html, _ = self.request(page, json_response=False)
+            code, html, _ = self.request(page, cookie=admin, json_response=False)
             scripts = re.findall(rb'<script type="module" src="([^"]+)"', html)
             self.assertEqual((code, len(scripts)), (200, 1), page)
             code, body, headers = self.request(scripts[0].decode(), json_response=False)

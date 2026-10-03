@@ -12,7 +12,7 @@ from ..auth import csrf_token, session_user
 from ..db import connect
 from ..event_theme import UPLOAD_PREFIX, event_config, theme_css, uploaded_asset
 from . import admin, public, staff  # noqa: F401  (importar registra as rotas)
-from .routes import STAFF, find
+from .routes import ADMIN, STAFF, find
 
 
 def is_trusted(address, networks):
@@ -21,6 +21,11 @@ def is_trusted(address, networks):
     except ValueError:
         return False
     return any(ip in network for network in networks)
+
+
+# Telas da equipe: sem sessão (ou sem o papel), o servidor nem envia a página.
+STAFF_PAGES = {"/painel": ADMIN, "/busca": STAFF, "/fila": STAFF}
+HOME = {"admin": "/painel", "volunteer": "/busca", "attendant": "/fila"}
 
 
 class App(BaseHTTPRequestHandler):
@@ -134,6 +139,10 @@ class App(BaseHTTPRequestHandler):
             filename = routes.get(path)
             if not filename:
                 return self.send_error(404)
+            if path in STAFF_PAGES:
+                user = self.session()
+                if not user or user["role"] not in STAFF_PAGES[path]:
+                    return self.redirect(HOME[user["role"]] if user else "/login")
             mime = ("text/css" if filename.endswith(".css") else
                     "text/javascript" if filename.endswith(".js") else "text/html")
             body = (settings.STATIC / filename).read_bytes()
@@ -150,6 +159,14 @@ class App(BaseHTTPRequestHandler):
         self.security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        self.security_headers()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def send_upload(self, name):
         """Logo enviada pelo painel: vem do banco e nunca roda código, nem aberta direto no navegador."""
