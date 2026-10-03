@@ -17,6 +17,10 @@ from .sheets import sync_sheets_once, sync_worker
 from .web.server import App
 
 
+def stop_server(*_):
+    raise KeyboardInterrupt
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sistema de credenciamento")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -101,8 +105,9 @@ def main():
         export_csv()
         threading.Thread(target=sync_worker, daemon=True).start()
         server = ThreadingHTTPServer((args.host, args.port), App)
-        # SIGTERM (systemctl stop, docker stop) encerra como o Ctrl+C, sem esperar o SIGKILL.
-        signal.signal(signal.SIGTERM, lambda *_: signal.raise_signal(signal.SIGINT))
+        # SIGTERM (systemctl stop, docker stop) encerra como o Ctrl+C, sem esperar o SIGKILL, mesmo
+        # quando o processo começou com o Ctrl+C ignorado (iniciado em segundo plano por um script).
+        signal.signal(signal.SIGTERM, stop_server)
         print(f"http://{args.host}:{args.port}")
         try:
             server.serve_forever()
