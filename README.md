@@ -123,7 +123,7 @@ docker compose exec backup ls -lt /backups                    # backups automát
 docker compose cp backup:/backups/credenciamento-AAAAMMDD-HHMMSS.sqlite3 .   # levar um para fora do servidor
 ```
 
-**Atualizar para uma nova versão:** confira que há um backup recente e rode `git pull && docker compose up -d --build --pull always` (acrescente o perfil de Caddy que você usa). O `--pull always` traz as correções de segurança da imagem do Python. Os dados ficam no volume e o banco é migrado ao iniciar.
+**Atualizar para uma nova versão:** confira que há um backup recente e rode `git pull && docker compose build --pull && docker compose up -d` (acrescente o perfil de Caddy que você usa, por exemplo `docker compose --profile https-interno up -d`). O `build --pull` traz as correções de segurança da imagem do Python; para atualizar o Caddy, rode antes `docker compose --profile https-interno pull`. Os dados ficam no volume e o banco é migrado ao iniciar.
 
 **Observações:**
 
