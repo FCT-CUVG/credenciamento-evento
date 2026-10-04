@@ -130,6 +130,12 @@ class WebTest(CredenciamentoTestCase):
             self.assertEqual(self.request(script, cookie=admin, json_response=False)[0], 200, script)
         self.assertEqual(self.request("/js/queue.js", cookie=volunteer, json_response=False)[0], 200)
         self.assertEqual(self.request("/js/dashboard.js", cookie=volunteer, json_response=False)[0], 404)
+        # Endereços que o servidor resolve para os mesmos arquivos também exigem login.
+        for script in ("/js//queue.js", "/js/./queue.js", "/js/x/../queue.js", "/js//dashboard.js",
+                       "/js/./dashboard/table.js", "/js/dashboard//tools.js"):
+            self.assertEqual(self.request(script, json_response=False)[0], 404, script)
+            self.assertEqual(self.request(script, cookie=volunteer, json_response=False)[0],
+                             200 if "queue" in script else 404, script)
         for script in ("/js/common.js", "/js/public.js", "/js/login.js", "/js/summary.js"):
             self.assertEqual(self.request(script, json_response=False)[0], 200, script)
         code, body, headers = self.request("/nao-existe", json_response=False)

@@ -145,7 +145,10 @@ class App(BaseHTTPRequestHandler):
             filename = routes.get(path)
             if not filename:
                 return self.send_error(404)
-            script_roles = next((roles for prefix, roles in STAFF_SCRIPTS.items() if path.startswith(prefix)), None)
+            # Confere o arquivo que será enviado, não o endereço pedido: "/js//queue.js" ou
+            # "/js/./queue.js" chegam ao mesmo arquivo e não podem escapar da exigência de login.
+            served = "/" + filename
+            script_roles = next((roles for prefix, roles in STAFF_SCRIPTS.items() if served.startswith(prefix)), None)
             if script_roles:
                 user = self.session()
                 if not user or user["role"] not in script_roles:
