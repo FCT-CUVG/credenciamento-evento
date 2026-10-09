@@ -28,12 +28,12 @@ SHEET_URL = os.environ.get("CHECKIN_SHEETS_URL", "")
 SHEET_SECRET = os.environ.get("CHECKIN_SHEETS_SECRET", "")
 PUBLIC_URL = os.environ.get("CHECKIN_PUBLIC_URL", "")
 TRUSTED_PROXY = os.environ.get("CHECKIN_TRUSTED_PROXY", "")
-# Limites de tentativas no formato "quantidade/minutos".
+# Limites de tentativas no formato "quantidade/minutos" (ou "quantidade/segundos" com "s": "10/30s").
 LIMITS = {
     "search": os.environ.get("CHECKIN_LIMIT_SEARCH", "60/1"),             # buscas por IP
     "search_miss": os.environ.get("CHECKIN_LIMIT_SEARCH_MISS", "20/10"),  # buscas sem resultado por IP
     "login_ip": os.environ.get("CHECKIN_LIMIT_LOGIN_IP", "20/5"),         # senhas erradas por IP
-    "login_user": os.environ.get("CHECKIN_LIMIT_LOGIN_USER", "10/15"),    # senhas erradas por conta
+    "login_user": os.environ.get("CHECKIN_LIMIT_LOGIN_USER", "10/30s"),   # senhas erradas por conta (bloqueio curto e sem aviso)
     "alert_miss": os.environ.get("CHECKIN_ALERT_SEARCH_MISS", "30/10"),   # alerta no painel (todas as origens)
 }
 
@@ -49,7 +49,7 @@ def trusted_proxy_networks(value=None):
 
 def rate_limit(name):
     """Devolve (quantidade, janela em segundos) do limite configurado em LIMITS."""
-    match = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*", LIMITS[name])
+    match = re.fullmatch(r"\s*(\d+)\s*/\s*(\d+)\s*(s?)\s*", LIMITS[name])
     if not match or not int(match[1]) or not int(match[2]):
-        raise ValueError(f"Limite {name} inválido: use quantidade/minutos, por exemplo 20/10.")
-    return int(match[1]), int(match[2]) * 60
+        raise ValueError(f"Limite {name} inválido: use quantidade/minutos (20/10) ou quantidade/segundos (10/30s).")
+    return int(match[1]), int(match[2]) * (1 if match[3] else 60)

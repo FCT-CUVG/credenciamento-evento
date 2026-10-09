@@ -156,7 +156,7 @@ sudo chown -R credenciamento: /opt/credenciamento
 | `CHECKIN_EVENT_CONFIG` | não | Outro caminho para o YAML do evento. |
 | `CHECKIN_RANGES_FILE` | não | Outro caminho para o arquivo de guichês. |
 | `CHECKIN_SHEETS_URL` e `CHECKIN_SHEETS_SECRET` | não | Ativam a cópia no Google Sheets. |
-| `CHECKIN_LIMIT_SEARCH`, `CHECKIN_LIMIT_SEARCH_MISS`, `CHECKIN_LIMIT_LOGIN_IP`, `CHECKIN_LIMIT_LOGIN_USER`, `CHECKIN_ALERT_SEARCH_MISS` | não | Limites de tentativas e alerta do painel, no formato `quantidade/minutos`; veja [Segurança e dados pessoais](#segurança-e-dados-pessoais). |
+| `CHECKIN_LIMIT_SEARCH`, `CHECKIN_LIMIT_SEARCH_MISS`, `CHECKIN_LIMIT_LOGIN_IP`, `CHECKIN_LIMIT_LOGIN_USER`, `CHECKIN_ALERT_SEARCH_MISS` | não | Limites de tentativas e alerta do painel, no formato `quantidade/minutos` (ou `quantidade/segundos` com `s`, como `10/30s`); veja [Segurança e dados pessoais](#segurança-e-dados-pessoais). |
 
 ```sh
 CHECKIN_SESSION_SECRET=cole-aqui-o-segredo-gerado
@@ -388,14 +388,14 @@ O que o sistema faz sozinho:
 | Sessões encerráveis | Ficam no banco: sair encerra a sessão, trocar a senha encerra todas as da conta, e `app.py revoke NOME` encerra sem trocar a senha. Duram 12 horas. |
 | Navegador | Cookie `HttpOnly`, `SameSite=Strict` e `Secure` (com HTTPS), CSRF ligado à sessão, CSP restritiva e HSTS com `CHECKIN_PUBLIC_URL` em `https://`. |
 
-Limites padrão, ajustáveis no ambiente (`quantidade/minutos`):
+Limites padrão, ajustáveis no ambiente (`quantidade/minutos`, ou `quantidade/segundos` com `s` no fim, como `10/30s`):
 
 | Variável | Padrão | O que conta |
 |---|---|---|
 | `CHECKIN_LIMIT_SEARCH` | `60/1` | Todas as buscas da página pública, por IP. |
 | `CHECKIN_LIMIT_SEARCH_MISS` | `20/10` | Buscas sem resultado, por IP. Atingido, o IP espera até a janela passar. |
 | `CHECKIN_LIMIT_LOGIN_IP` | `20/5` | Senhas erradas, por IP. |
-| `CHECKIN_LIMIT_LOGIN_USER` | `10/15` | Senhas erradas, por conta. Quem souber o nome de uma conta consegue bloqueá-la por esse tempo; use nomes que não sejam óbvios. |
+| `CHECKIN_LIMIT_LOGIN_USER` | `10/30s` | Senhas erradas, por conta. O bloqueio é curto e **não aparece na tela**: a conta bloqueada recebe o mesmo "Usuário ou senha incorretos", até com a senha certa. Avise a equipe pessoalmente para esperar 30 segundos e tentar de novo. |
 | `CHECKIN_ALERT_SEARCH_MISS` | `30/10` | Alerta no painel: buscas sem resultado, somando todas as origens. |
 
 Os limites por IP dependem de a aplicação saber o IP de cada pessoa; atrás de um proxy, configure-o como em [Com Docker](#com-docker) e confira pelo log. Os limites ficam na memória e recomeçam quando o serviço reinicia.
