@@ -61,6 +61,7 @@ async function refresh() {
     renderCheckin(data.public_checkin, data.search_misses);
     fillDeskFilter(data.desks);
     $('sync-status').textContent = `Atualizado às ${clockTime()} · ${syncText(data)}`;
+    $('app-version').textContent = `Versão do sistema: ${data.version.label}`;
     renderDashboardKeepingFocus();
     message('page-error', '');
   } catch (err) {

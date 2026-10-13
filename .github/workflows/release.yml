@@ -1,0 +1,23 @@
+# Cria a release no GitHub quando uma tag vX.Y.Z é enviada, com as notas geradas a partir dos PRs.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Tag com sufixo (v1.0.0-rc.1) vira pré-release.
+          case "$TAG" in *-*) pre=--prerelease ;; *) pre= ;; esac
+          gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $pre

@@ -15,6 +15,7 @@ from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, co
 from ..event_theme import remove_logo, reset_theme, save_logo, save_theme, theme_settings
 from ..lookup import cpf_key, email_key
 from ..participants import STATUS_STEPS, public_checkin_state, set_public_checkin, status_fields
+from ..version import current as current_version
 from .routes import ADMIN, route
 
 
@@ -41,6 +42,7 @@ def dashboard(req, user, data):
                               # Pagamento ou afiliação faltando em quem ainda não foi credenciado.
                               "registration_pending": sum(r["status"] != "completed" and bool(pending_reasons(r))
                                                           for r in rows),
+                              "version": current_version(),
                               "items": [participant_dict(r, private=True) for r in rows]})
 
 

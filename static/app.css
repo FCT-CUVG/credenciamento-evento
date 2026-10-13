@@ -442,3 +442,4 @@ dialog .actions .button { flex: 1; }
 .theme-preview .tp-card { display: grid; gap: 6px; padding: 14px; background: var(--white); color: var(--ink); }
 .theme-preview .tp-card span:not(.tp-button) { color: var(--slate); }
 .theme-preview .tp-button { justify-self: start; margin-top: 4px; padding: 8px 14px; border-radius: 6px; background: var(--leaf); color: var(--white); font-weight: 800; }
+.app-version { margin: 0 0 20px; font-size: .82rem; text-align: right; }
