@@ -1,4 +1,15 @@
 # Imagem do sistema de credenciamento: só a biblioteca padrão do Python, sem pip install.
+
+# Versão mostrada no painel, tirada do .git que o compose passa como contexto "git" (tag vX.Y.Z,
+# commits depois dela e commit curto). O .git não entra na imagem final, só o arquivo VERSION.
+# Sem esse contexto (docker build direto), a versão fica "desconhecida".
+FROM scratch AS git
+FROM python:3.13-slim AS versao
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+COPY --from=git . /src/.git
+RUN git --git-dir=/src/.git describe --tags --always --match 'v[0-9]*' > /VERSION 2>/dev/null \
+    || echo desconhecida > /VERSION
+
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,6 +25,7 @@ RUN useradd --system --uid 10001 --no-create-home --home-dir /app --shell /usr/s
 
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY . .
+COPY --from=versao /VERSION /app/VERSION
 
 USER credenciamento
 VOLUME ["/data"]

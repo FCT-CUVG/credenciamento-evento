@@ -14,7 +14,11 @@ x-caddy: &caddy
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      # Só para descobrir a versão (tag e commit) mostrada no painel; não vai para a imagem.
+      additional_contexts:
+        git: ./.git
     image: credenciamento-evento
     # Imagem montada aqui, a partir do Dockerfile; nunca baixada.
     pull_policy: build
