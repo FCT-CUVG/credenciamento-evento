@@ -4,8 +4,7 @@
 # commits depois dela e commit curto). O .git não entra na imagem final, só o arquivo VERSION.
 # Sem esse contexto (docker build direto), a versão fica "desconhecida".
 FROM scratch AS git
-FROM python:3.13-slim AS versao
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+FROM alpine/git:2.54.0 AS versao
 COPY --from=git . /src/.git
 RUN git --git-dir=/src/.git describe --tags --always --match 'v[0-9]*' > /VERSION 2>/dev/null \
     || echo desconhecida > /VERSION
