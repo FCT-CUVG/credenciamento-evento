@@ -70,7 +70,7 @@ function actionButton(label, className, onClick) {
 }
 
 function queueCard(item, refresh) {
-  const {role, username, guiche: ownDesk} = session.user;
+  const {role, username} = session.user;
   const volunteer = mode === 'volunteer';
   const attendantReady = mode === 'attendant' && item.status === 'ready';
   const split = volunteer || attendantReady;
@@ -112,7 +112,8 @@ function queueCard(item, refresh) {
     card.append(block);
   }
 
-  const staff = ['volunteer', 'admin'].includes(role);
+  // Voluntários e atendentes podem separar kits e atender em qualquer guichê.
+  const staff = ['volunteer', 'attendant', 'admin'].includes(role);
   const actions = el('div', 'queue-actions');
   if (volunteer && staff && item.status === 'prechecked') {
     actions.append(actionButton('Assumir busca', 'button', button => runAction('claim', item, button, refresh)));
@@ -122,7 +123,7 @@ function queueCard(item, refresh) {
       actionButton('Liberar busca', 'button secondary small', button => runAction('release', item, button, refresh)),
       actionButton('Pronto no guichê', 'button', () => ask('ready', item)));
   }
-  const canManageDesk = staff || (role === 'attendant' && ownDesk === item.guiche);
+  const canManageDesk = staff;
   if (item.status === 'ready' && canManageDesk) {
     actions.append(actionButton('Voltar para busca', 'button secondary small', () => ask('undo_ready', item)));
     if (mode === 'attendant') actions.append(actionButton('Confirmar retirada', 'button', () => ask('complete', item)));

@@ -22,7 +22,8 @@ def queue(req, user, data):
     requested = params.get("guiche", [""])[0].strip()
     attendant_view = params.get("view", [""])[0] == "attendant"
     guiche = "" if requested == "all" else requested
-    if user["role"] == "attendant" and not requested:
+    # Sem guichê pedido, a tela do guichê abre no do atendente; a separação mostra todos.
+    if user["role"] == "attendant" and not requested and attendant_view:
         guiche = user["guiche"]
     with connect() as db:
         statuses = "('ready','completed')" if attendant_view else "('prechecked','searching','ready')"
