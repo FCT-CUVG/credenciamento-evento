@@ -16,9 +16,11 @@ class PublicCheckinTest(CredenciamentoTestCase):
         with database.connect() as db:
             self.assertEqual(db.execute("SELECT status FROM participants WHERE email_key=?", (lookup.email_key("ana@example.org"),)).fetchone()[0],
                              "prechecked")
-        # Repetir a busca (ou buscar pelo e-mail) mostra o mesmo guichê sem registrar de novo.
-        code, done, _ = self.request("/api/checkin", {"email": " ANA@example.org "})
-        self.assertEqual((code, done), (200, done_ana))
+        # Repetir a busca (ou buscar pelo e-mail) não registra de novo nem mostra o guichê outra vez.
+        already = {"error": "O pré-check-in desta inscrição já foi feito.", "already": True}
+        for repeated in ({"cpf": "12345678901"}, {"email": " ANA@example.org "}):
+            code, again, _ = self.request("/api/checkin", repeated)
+            self.assertEqual((code, again), (409, already))
         with database.connect() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM events WHERE action='precheck'").fetchone()[0], 1)
         for invalid in ({"cpf": "123"}, {"email": "ana"}, {}, {"name": "Ána Silva"}):
@@ -108,8 +110,9 @@ class PublicCheckinTest(CredenciamentoTestCase):
     def test_only_searches_without_result_are_limited_and_counted_for_the_alert(self):
         settings.LIMITS.update(search="100/1", search_miss="3/10", alert_miss="2/10")
         # Quem encontra a inscrição não gasta o limite de erros, mesmo repetindo a busca.
-        for _ in range(5):
-            self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
+        self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
+        for _ in range(4):
+            self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 409)
         for cpf in ("00000000001", "00000000002", "00000000003"):
             self.assertEqual(self.request("/api/checkin", {"cpf": cpf})[0], 404)
         # Depois de três erros, o mesmo IP fica bloqueado por um tempo, até para uma busca certa.

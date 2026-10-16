@@ -76,12 +76,15 @@ def checkin(req, user, data):
             # Um mesmo e-mail pode estar em mais de uma inscrição; não dá para saber qual é a da pessoa.
             return req.respond(409, {"error": "Há mais de uma inscrição com este e-mail."})
         row = matches[0]
+        if row["status"] != "registered":
+            # Quem já fez o pré-check-in não recebe de novo o guichê (nem o nome): o resultado
+            # fica salvo no celular de quem fez, e uma segunda busca não deve orientar ninguém.
+            return req.respond(409, {"error": "O pré-check-in desta inscrição já foi feito.", "already": True})
         needs_guidance = bool(pending_reasons(row))
-        if row["status"] == "registered":
-            row = update_participant(db, row["id"], "precheck_pending" if needs_guidance else "precheck",
-                                     "participant", status="prechecked", prechecked_at=now())
-            db.commit()
-            export_csv()
+        row = update_participant(db, row["id"], "precheck_pending" if needs_guidance else "precheck",
+                                 "participant", status="prechecked", prechecked_at=now())
+        db.commit()
+    export_csv()
     # The public page never learns why a registration is pending.
     result = {"ok": True, "name": mask_public_text(row["name"]), "needs_guidance": needs_guidance}
     if not needs_guidance:

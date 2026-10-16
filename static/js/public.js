@@ -30,7 +30,10 @@ const translations = {
     notFoundRetry: 'Search again',
     closedTitle: 'PRE-CHECK-IN NOT OPEN YET',
     closedText: 'Online pre-check-in opens when the check-in desks start. Please come back later or find a volunteer.',
-    closedRetry: 'Try again'
+    closedRetry: 'Try again',
+    alreadyTitle: 'PRE-CHECK-IN ALREADY DONE',
+    alreadyText: 'This registration has already been pre-checked in. If you need help, please find a volunteer or go to the check-in desk.',
+    alreadyRetry: 'Find another registration'
   },
   'pt-BR': {
     brand: 'Credenciamento',
@@ -60,7 +63,10 @@ const translations = {
     notFoundRetry: 'Buscar novamente',
     closedTitle: 'PRÉ-CHECK-IN AINDA NÃO ABERTO',
     closedText: 'O pré-check-in pelo celular abre quando o credenciamento começar. Volte mais tarde ou procure um voluntário.',
-    closedRetry: 'Tentar novamente'
+    closedRetry: 'Tentar novamente',
+    alreadyTitle: 'PRÉ-CHECK-IN JÁ REALIZADO',
+    alreadyText: 'O pré-check-in desta inscrição já foi feito. Se precisar de ajuda, procure um voluntário ou o atendimento.',
+    alreadyRetry: 'Consultar outra inscrição'
   }
 };
 
@@ -76,7 +82,7 @@ let language = ['en', 'pt-BR'].includes(store.get('language')) ? store.get('lang
 let desk = null, errorState = null, notFound = null, useEmail = false;
 
 function show(id) {
-  for (const key of ['public-search', 'public-done', 'public-pending', 'public-notfound', 'public-closed']) {
+  for (const key of ['public-search', 'public-done', 'public-pending', 'public-notfound', 'public-closed', 'public-already']) {
     $(key).classList.toggle('hidden', key !== id);
   }
 }
@@ -190,6 +196,10 @@ function init() {
     } catch (err) {
       if (err.status === 403 && err.data?.closed) {
         show('public-closed');
+      } else if (err.status === 409 && err.data?.already) {
+        // Segunda busca da mesma inscrição: não repete o guichê.
+        show('public-already');
+        $('already-retry').focus();
       } else if (err.status === 404 || err.status === 409) {
         notFound = err.status;
         renderNotFound();
@@ -222,7 +232,7 @@ function init() {
     show('public-search');
     cpfInput.focus();
   };
-  for (const id of ['done-retry', 'pending-retry']) $(id).addEventListener('click', retry);
+  for (const id of ['done-retry', 'pending-retry', 'already-retry']) $(id).addEventListener('click', retry);
   // Fechado: tenta de novo consultando se a coordenação já abriu o pré-check-in.
   $('closed-retry').addEventListener('click', async () => {
     await loadEventConfig();
