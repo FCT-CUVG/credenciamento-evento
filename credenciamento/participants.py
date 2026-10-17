@@ -35,6 +35,10 @@ def queue_action_fields(action, user, row):
     owns_search = row["claimed_by"] == username or role == "admin"
     at_desk = staff
     clear = not pending_reasons(row)
+    # Pedido de separação feito no guichê para quem não fez o pré-check-in: registra a chegada.
+    # Com pendência, a chegada fica registrada, mas a pessoa só entra na fila depois de resolvida.
+    if action == "request" and staff and row["status"] == "registered":
+        return {"status": "prechecked", "prechecked_at": stamp}
     if action == "claim" and staff and row["status"] == "prechecked" and clear:
         return {"status": "searching", "claimed_by": username, "claimed_at": stamp}
     if action == "ready" and staff and row["status"] == "searching" and clear and owns_search:

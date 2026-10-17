@@ -12,6 +12,7 @@ class PublicCheckinTest(CredenciamentoTestCase):
         done_ana = {"ok": True, "name": "Á*a S***a", "needs_guidance": False, "guiche": "1",
                     "guiche_ranges": [{"from": "A", "to": "D"}], "guiche_priority": False}
         code, done, _ = self.request("/api/checkin", {"cpf": "123.456.789-01"})
+        self.assertTrue(done.pop("ticket"))
         self.assertEqual((code, done), (200, done_ana))
         with database.connect() as db:
             self.assertEqual(db.execute("SELECT status FROM participants WHERE email_key=?", (lookup.email_key("ana@example.org"),)).fetchone()[0],
@@ -45,6 +46,7 @@ class PublicCheckinTest(CredenciamentoTestCase):
         code, updated, _ = self.request("/api/participants/payment", {"id": pid, "paid": 0}, *admin)
         self.assertEqual((code, updated["item"]["paid"]), (200, False))
         code, done, _ = self.request("/api/checkin", {"cpf": "12345678901"})
+        self.assertTrue(done.pop("ticket"))
         self.assertEqual((code, done), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": True}))
         self.assertEqual(self.request("/api/dashboard", cookie=admin[0])[1]["guidance_pending"], 1)
         self.assertEqual(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"], [])
@@ -58,6 +60,7 @@ class PublicCheckinTest(CredenciamentoTestCase):
                                      "email": "ana@example.org", "cpf": "12345678901",
                                      "pago": 1, "prioridade": 0}]), ".json")
         code, result, _ = self.request("/api/checkin", {"cpf": "12345678901"})
+        self.assertTrue(result.pop("ticket"))
         self.assertEqual((code, result), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": True}))
         with database.connect() as db:
             row = db.execute("SELECT status, prechecked_at FROM participants WHERE email_key=?", (lookup.email_key("ana@example.org"),)).fetchone()
@@ -88,6 +91,24 @@ class PublicCheckinTest(CredenciamentoTestCase):
         # Resolvida a pendência, o responsável credencia direto pelo painel detalhado.
         code, updated, _ = self.request("/api/participants/status", {"id": pid, "status": "completed"}, *admin)
         self.assertEqual((code, updated["item"]["status"]), (200, "completed"))
+
+    def test_after_pickup_the_public_page_says_the_registration_is_done(self):
+        code, done, _ = self.request("/api/checkin", {"cpf": "12345678901"})
+        ticket = done["ticket"]
+        self.assertEqual(self.request("/api/checkin/status", {"ticket": ticket})[1], {"completed": False})
+        pid = self.pid_by_email("ana@example.org")
+        volunteer = self.login("vol1")
+        for action in ("claim", "ready", "complete"):
+            self.assertEqual(self.request("/api/action/" + action, {"id": pid}, *volunteer)[0], 200)
+        # O celular de quem fez o pré-check-in descobre que o credenciamento terminou.
+        self.assertEqual(self.request("/api/checkin/status", {"ticket": ticket})[1], {"completed": True})
+        code, again, _ = self.request("/api/checkin", {"cpf": "12345678901"})
+        self.assertEqual((code, again), (409, {"error": "Esta inscrição já foi credenciada. Se for um erro, procure um voluntário.",
+                                               "already": True, "completed": True}))
+        # Comprovante adulterado ou de outra pessoa não é aceito.
+        other = self.pid_by_email("bruno@example.org")
+        for forged in ("", "x", pid, other + "." + ticket.rsplit(".", 1)[1], ticket[:-1] + ("1" if ticket[-1] == "0" else "0")):
+            self.assertEqual(self.request("/api/checkin/status", {"ticket": forged})[0], 400)
 
     def test_public_checkin_opens_and_closes_from_the_dashboard(self):
         admin = self.login("admin")

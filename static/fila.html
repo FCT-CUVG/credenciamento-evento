@@ -28,10 +28,18 @@
         <p class="attendant-instruction">Confirme a retirada somente depois de entregar o crachá e o kit ao participante.</p>
       </div>
     </div>
-    <div class="toolbar">
-      <input id="queue-filter" class="search-input" type="search" placeholder="Filtrar pelo nome" aria-label="Filtrar pelo nome">
+    <div class="toolbar desk-search">
+      <input id="queue-filter" class="search-input" type="search" autocomplete="off"
+        placeholder="Buscar participante: nome, afiliação, início do CPF, CPF ou e-mail"
+        aria-label="Buscar participante" role="combobox" aria-expanded="false" aria-controls="search-results"
+        aria-autocomplete="list">
       <span class="muted" id="last-update"></span>
+      <p class="muted search-help">Use ↑ e ↓ para escolher e Enter para solicitar a separação. Esc limpa a busca.</p>
     </div>
+    <section id="search-panel" class="search-panel hidden" aria-label="Participantes encontrados">
+      <p id="search-summary" class="search-summary" aria-live="polite"></p>
+      <div id="search-results" class="search-results" role="listbox" aria-label="Participantes encontrados"></div>
+    </section>
     <p id="page-error" class="alert hidden" role="alert"></p>
     <div class="attendant-grid">
       <section class="lane ready-lane"><h2>PRONTOS PARA RETIRADA <span id="count-ready"></span></h2><div class="queue-list" id="lane-ready"></div></section>

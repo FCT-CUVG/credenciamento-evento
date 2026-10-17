@@ -54,6 +54,7 @@ h1, h2, h3, p { margin-top: 0; }
 .guiche-options { position: absolute; z-index: 10; right: 0; top: 100%; width: max-content; min-width: 250px; max-width: min(90vw, 390px); max-height: 70vh; overflow: auto; padding: 7px; background: var(--white); border: 1px solid #d5dbe4; box-shadow: 0 12px 30px rgba(28,29,58,.18); }
 .guiche-options a { display: flex; align-items: center; min-height: 48px; padding: 8px 13px; border-bottom: 1px solid #e8ecf0; white-space: normal; }
 .guiche-options a:last-child { border-bottom: 0; }
+.guiche-separator { margin: 4px 0; border: 0; border-top: 2px solid #d5dbe4; }
 .guiche-options a:hover { background: #edf4f0; }
 
 main { width: min(100%, 1500px); margin: 0 auto; padding: clamp(20px, 3vw, 42px); }
@@ -185,6 +186,7 @@ body[data-page="volunteer"] main, body[data-page="attendant"] main, body[data-pa
 .queue-guiche-value.medium { font-size: clamp(2.2rem, 3.4vw, 3.4rem); }
 .queue-guiche-value.long { font-size: clamp(1.05rem, 26cqi, 2.2rem); line-height: 1.05; overflow-wrap: normal; word-break: normal; }
 .queue-card .name { font-size: clamp(1.25rem, 1.8vw, 1.7rem); line-height: 1.17; font-weight: 850; overflow-wrap: anywhere; color: var(--ink); }
+.queue-card .affiliation { margin-top: -4px; color: var(--slate); font-size: .98rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .queue-card .meta { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 9px; }
 .guiche { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 13px; background: var(--navy); color: var(--white); border-radius: 4px; font-size: 1.02rem; font-weight: 850; }
 .queue-card .button { width: 100%; }
@@ -442,3 +444,64 @@ dialog .actions .button { flex: 1; }
 .theme-preview .tp-card { display: grid; gap: 6px; padding: 14px; background: var(--white); color: var(--ink); }
 .theme-preview .tp-card span:not(.tp-button) { color: var(--slate); }
 .theme-preview .tp-button { justify-self: start; margin-top: 4px; padding: 8px 14px; border-radius: 6px; background: var(--leaf); color: var(--white); font-weight: 800; }
+
+/* Busca de participantes no guichê */
+.desk-search { margin-bottom: 10px; row-gap: 6px; }
+.desk-search .search-help { grid-column: 1; grid-row: 2; margin: 0; font-size: .85rem; }
+.desk-search #last-update { grid-column: 2; grid-row: 2; }
+.search-panel { margin: 0 0 16px; padding: 10px 12px; background: var(--white); border: 1px solid #d5dbe4; border-top: 4px solid var(--navy-header); }
+.search-summary { margin: 2px 4px 8px; color: var(--slate); font-size: .92rem; font-weight: 700; }
+.search-results { display: grid; gap: 4px; max-height: 34vh; overflow-y: auto; }
+.search-result { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.4fr) auto; align-items: center; gap: 6px 14px; padding: 8px 12px; border: 2px solid transparent; border-radius: 8px; background: var(--fog); cursor: pointer; }
+.search-result.active { border-color: var(--navy-header); background: #e6eef6; }
+.search-result.pending { background: #fff4e3; box-shadow: inset 4px 0 0 #bf6d22; }
+.search-result.pending.active { border-color: #bf6d22; }
+.search-result-name { font-size: 1.08rem; font-weight: 850; line-height: 1.2; overflow-wrap: anywhere; }
+.search-result-affiliation { color: var(--slate); font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
+.search-result-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: .9rem; font-weight: 700; }
+.search-cpf { font-variant-numeric: tabular-nums; }
+.search-status { padding: 3px 9px; border-radius: 4px; background: #e6e9f0; }
+.search-status.status-registered { background: #eef0f4; color: var(--slate); }
+.search-status.status-ready, .search-status.status-completed { background: #dff1e3; color: var(--leaf-dark); }
+.pill.pending-pill { background: #fde2c4; color: #70410f; white-space: normal; }
+.search-result-action .button.small { min-height: 40px; white-space: nowrap; }
+.button.warning { background: #bf6d22; }
+@media (max-width: 800px) {
+  .search-result { grid-template-columns: 1fr; }
+}
+
+/* Notebooks (ex.: full HD em 14", com escala de 125–150%): menos espaço vertical gasto em
+   cabeçalho e títulos, para as filas aparecerem sem rolar a página. */
+@media (min-width: 801px) and (max-height: 1000px) {
+  .site-header { min-height: 64px; padding-block: 6px; }
+  .site-brand img { max-height: 44px; width: clamp(110px, 11vw, 150px); }
+  .site-brand-label { font-size: clamp(1.15rem, 1.7vw, 1.5rem); padding-left: 12px; }
+  main { padding: 14px clamp(16px, 2vw, 28px); }
+  .page-heading { margin-bottom: 12px; padding-bottom: 8px; border-bottom-width: 2px; }
+  .page-title { font-size: clamp(2.2rem, 3.4vw, 3.2rem); margin-bottom: 4px; }
+  .page-heading p { font-size: .92rem; }
+  /* Guichê: número, faixa e instrução numa linha só. */
+  .attendant-heading > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 22px; }
+  .attendant-heading .page-title, .attendant-heading.all-desks .page-title { font-size: clamp(3rem, 5vw, 4.2rem); margin: 0; }
+  .attendant-heading .guiche-range { font-size: clamp(1.1rem, 1.6vw, 1.45rem); }
+  .attendant-heading .attendant-instruction { flex-basis: 100%; margin-top: 0; font-size: .88rem; }
+  .toolbar { margin: 10px 0; gap: 8px 14px; }
+  .search-input { min-height: 48px; }
+  .lane { padding: 10px; }
+  .lane h2 { font-size: 1.4rem; margin: 2px 4px 8px; }
+  .queue-list { gap: 8px; }
+  .queue-card { gap: 8px; padding: 14px; }
+  .volunteer-card, .attendant-card { min-height: 118px; padding: 0; }
+  .queue-card-main { gap: 6px; padding: 12px 14px; }
+  .queue-card .name, .attendant-card .name { font-size: clamp(1.15rem, 1.5vw, 1.45rem); }
+  .queue-guiche { padding: 10px 6px; }
+  .queue-guiche-value { font-size: clamp(2.4rem, 3.6vw, 3.4rem); }
+  .queue-actions .button { min-height: 46px; }
+  .queue-actions .button:not(.secondary) { font-size: 1.2rem; }
+  .volunteer-card .queue-actions .button { min-height: 42px; }
+  .attendant-grid .completed-card { padding: 10px 14px; }
+  .attendant-grid .queue-list { max-height: max(260px, calc(100vh - 300px)); }
+  .search-results { max-height: 30vh; }
+  /* Separação: cada coluna rola por dentro, mantendo títulos e busca à vista. */
+  .lane-grid .queue-list { max-height: max(260px, calc(100vh - 290px)); overflow-y: auto; padding-right: 3px; }
+}

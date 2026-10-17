@@ -33,7 +33,9 @@ const translations = {
     closedRetry: 'Try again',
     alreadyTitle: 'PRE-CHECK-IN ALREADY DONE',
     alreadyText: 'This registration has already been pre-checked in. If you need help, please find a volunteer or go to the check-in desk.',
-    alreadyRetry: 'Find another registration'
+    alreadyRetry: 'Find another registration',
+    completedTitle: 'CHECK-IN ALREADY COMPLETED',
+    completedText: 'This registration has already been checked in and the badge and kit were collected. If this is a mistake, please find a volunteer.'
   },
   'pt-BR': {
     brand: 'Credenciamento',
@@ -66,7 +68,9 @@ const translations = {
     closedRetry: 'Tentar novamente',
     alreadyTitle: 'PRÉ-CHECK-IN JÁ REALIZADO',
     alreadyText: 'O pré-check-in desta inscrição já foi feito. Se precisar de ajuda, procure um voluntário ou o atendimento.',
-    alreadyRetry: 'Consultar outra inscrição'
+    alreadyRetry: 'Consultar outra inscrição',
+    completedTitle: 'CREDENCIAMENTO JÁ REALIZADO',
+    completedText: 'Esta inscrição já foi credenciada: o crachá e o kit já foram retirados. Se for um erro, procure um voluntário.'
   }
 };
 
@@ -79,7 +83,7 @@ const store = {
 const RESULT_TTL = 12 * 60 * 60 * 1000;
 
 let language = ['en', 'pt-BR'].includes(store.get('language')) ? store.get('language') : 'en';
-let desk = null, errorState = null, notFound = null, useEmail = false;
+let desk = null, errorState = null, notFound = null, already = null, useEmail = false;
 
 function show(id) {
   for (const key of ['public-search', 'public-done', 'public-pending', 'public-notfound', 'public-closed', 'public-already']) {
@@ -108,6 +112,14 @@ function renderLookupMethod() {
   cpfInput.required = !useEmail;
   emailInput.required = useEmail;
   $('lookup-alternative').textContent = translations[language][useEmail ? 'useCpf' : 'useEmail'];
+}
+
+// Inscrição já atendida: pré-check-in já feito ou credenciamento concluído.
+function renderAlready() {
+  if (!already) return;
+  const t = translations[language];
+  $('already-title').textContent = already === 'completed' ? t.completedTitle : t.alreadyTitle;
+  $('already-text').textContent = already === 'completed' ? t.completedText : t.alreadyText;
 }
 
 function renderNotFound() {
@@ -146,9 +158,31 @@ function setLanguage(value) {
   renderLookupMethod();
   renderDesk();
   renderNotFound();
+  renderAlready();
+}
+
+// Depois da retirada do kit, o resultado salvo no celular passa a dizer que o credenciamento foi feito.
+let statusTimer = null;
+async function checkCompleted(result) {
+  if (!result?.ticket) return false;
+  try {
+    const data = await api('/api/checkin/status', {ticket: result.ticket});
+    if (!data.completed) return false;
+  } catch {
+    return false;
+  }
+  clearInterval(statusTimer);
+  store.remove('result');
+  desk = null;
+  already = 'completed';
+  renderAlready();
+  show('public-already');
+  return true;
 }
 
 function showResult(result) {
+  clearInterval(statusTimer);
+  if (result.ticket) statusTimer = setInterval(() => checkCompleted(result), 30000);
   if (result.needs_guidance) {
     desk = null;
     $('pending-name').textContent = result.name;
@@ -189,7 +223,8 @@ function init() {
       const data = await api('/api/checkin', useEmail ? {email: emailInput.value.trim()} : {cpf: cpfInput.value.trim()});
       const result = {
         name: data.name, needs_guidance: data.needs_guidance, guiche: data.guiche,
-        guiche_ranges: data.guiche_ranges, guiche_priority: data.guiche_priority, saved_at: Date.now()
+        guiche_ranges: data.guiche_ranges, guiche_priority: data.guiche_priority, ticket: data.ticket,
+        saved_at: Date.now()
       };
       store.set('result', result);
       showResult(result);
@@ -198,6 +233,8 @@ function init() {
         show('public-closed');
       } else if (err.status === 409 && err.data?.already) {
         // Segunda busca da mesma inscrição: não repete o guichê.
+        already = err.data.completed ? 'completed' : 'prechecked';
+        renderAlready();
         show('public-already');
         $('already-retry').focus();
       } else if (err.status === 404 || err.status === 409) {
@@ -221,12 +258,14 @@ function init() {
   });
 
   const retry = () => {
+    clearInterval(statusTimer);
     store.remove('result');
     form.reset();
     useEmail = false;
     renderLookupMethod();
     desk = null;
     notFound = null;
+    already = null;
     errorState = null;
     message('lookup-error', '');
     show('public-search');
@@ -240,7 +279,10 @@ function init() {
   });
 
   const saved = store.get('result');
-  if (saved && typeof saved.name === 'string' && Date.now() - saved.saved_at < RESULT_TTL) showResult(saved);
+  if (saved && typeof saved.name === 'string' && Date.now() - saved.saved_at < RESULT_TTL) {
+    showResult(saved);
+    checkCompleted(saved);
+  }
   else {
     store.remove('result');
     if (!eventInfo.checkinOpen) show('public-closed');

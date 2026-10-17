@@ -1,10 +1,11 @@
 // Filas da equipe: Separação (/busca, voluntários) e guichês (/fila, atendentes).
-import {$, api, clockTime, el, loadEventConfig, message, requireSession, session} from './common.js';
+import {$, api, clockTime, el, loadEventConfig, message, requireSession, searchKey, session} from './common.js';
 
 const mode = document.body.dataset.page === 'attendant' ? 'attendant' : 'volunteer';
-let items = [], desk = '', priorityDesk = '', pendingAction = null;
+let items = [], desk = '', priorityDesk = '', withoutPriority = false, pendingAction = null;
 
 const dialogTitles = {
+  request: 'Solicitar separação?',
   ready: 'Material no guichê?',
   complete: 'Confirmar retirada?',
   undo_ready: 'Voltar para a busca?',
@@ -14,6 +15,10 @@ const dialogTitles = {
 // Ações com efeito no atendimento pedem confirmação num diálogo.
 function ask(action, item) {
   const descriptions = {
+    request: item.pending
+      ? `A inscrição de ${item.name} tem uma pendência. A chegada será registrada, mas o material só será ` +
+        'separado depois que a coordenação resolver. Oriente a pessoa a procurar a coordenação.'
+      : `A chegada de ${item.name} será registrada e o pedido vai para a separação (guichê ${item.guiche}).`,
     ready: `Confirme que o crachá e o kit de ${item.name} já estão no guichê ${item.guiche}.`,
     complete: `Confirme que ${item.name} recebeu o crachá e o kit no guichê ${item.guiche}.`,
     undo_ready: `${item.name} sairá dos prontos no guichê ${item.guiche} e voltará para ` +
@@ -24,20 +29,31 @@ function ask(action, item) {
   $('dialog-title').textContent = dialogTitles[action];
   $('dialog-description').textContent = descriptions[action];
   $('dialog-confirm').textContent = action.startsWith('undo_') ? 'Voltar'
-    : action === 'complete' ? 'Confirmar retirada' : 'Confirmar';
+    : action === 'complete' ? 'Confirmar retirada'
+    : action === 'request' ? (item.pending ? 'Registrar chegada' : 'Solicitar separação') : 'Confirmar';
   $('confirm-dialog').showModal();
+  $('dialog-confirm').focus();
 }
 
 function initDialog(refresh) {
   $('dialog-cancel').addEventListener('click', () => $('confirm-dialog').close());
+  // Na busca do guichê, o foco volta para o campo para a próxima pessoa.
+  $('confirm-dialog').addEventListener('close', () => { if (mode === 'attendant') $('queue-filter').focus(); });
   $('dialog-confirm').addEventListener('click', async () => {
     if (!pendingAction) return;
     const button = $('dialog-confirm');
     button.disabled = true;
     try {
-      await api('/api/action/' + pendingAction.action, {id: pendingAction.item.id});
+      const {action, item} = pendingAction;
+      await api('/api/action/' + action, {id: item.id});
       $('confirm-dialog').close();
       await refresh();
+      if (action === 'request') {
+        searchNotice = item.pending
+          ? `Chegada de ${item.name} registrada. Oriente a pessoa a procurar a coordenação para resolver a pendência.`
+          : `Separação solicitada para ${item.name}.`;
+        $('search-summary').textContent = searchNotice;
+      }
     } catch (err) {
       $('confirm-dialog').close();
       await refresh();
@@ -85,6 +101,7 @@ function queueCard(item, refresh) {
   const name = el('div', 'name', item.name);
   if (item.priority && !atPriorityDesk) name.append(el('span', 'pill priority', 'Prioridade'));
   content.append(name);
+  if (item.affiliation) content.append(el('div', 'affiliation', item.affiliation));
 
   // Na tela de um guichê específico, o número do guichê é redundante: mostra o início do CPF.
   const showCpf = mode === 'attendant' && desk;
@@ -138,26 +155,146 @@ function queueCard(item, refresh) {
 const emptyText = {ready: 'Ninguém aguardando retirada.', completed: 'Nenhuma retirada confirmada.'};
 
 function renderQueue(refresh) {
-  const filter = ($('queue-filter').value || '').toLocaleLowerCase();
+  const filter = searchKey($('queue-filter').value).split(/\s+/).filter(Boolean);
   const statuses = mode === 'attendant' ? ['ready', 'completed'] : ['prechecked', 'searching', 'ready'];
   for (const status of statuses) {
     const list = $('lane-' + status);
     list.replaceChildren();
-    const rows = items.filter(item => item.status === status &&
-      `${item.name} ${item.guiche}`.toLocaleLowerCase().includes(filter));
+    const rows = items.filter(item => item.status === status && (exactSearch()
+      ? searchResults.some(result => result.id === item.id)
+      : filter.every(word => searchKey(`${item.name} ${item.affiliation} ${item.guiche} ${item.cpf_prefix || ''}`)
+        .includes(word))));
     $('count-' + status).textContent = `(${rows.length})`;
     if (!rows.length) list.append(el('div', 'empty', emptyText[status] || 'Nenhum participante nesta etapa.'));
     else rows.forEach(item => list.append(queueCard(item, refresh)));
   }
 }
 
+// Busca do guichê: acha qualquer inscrito (não só quem fez o pré-check-in) para pedir a separação.
+const statusText = {
+  registered: 'Ainda não chegou', prechecked: 'Aguardando busca', searching: 'Em busca',
+  ready: 'Pronto no guichê', completed: 'Já credenciado'
+};
+let searchResults = [], activeResult = -1, searchSeq = 0, searchTimer = null, searchNotice = '';
+
+// CPF completo ou e-mail: o navegador não tem esses dados, então as colunas usam o resultado do servidor.
+const exactSearch = () => {
+  const query = $('queue-filter').value.trim();
+  return query.includes('@') || query.replace(/\D/g, '').length === 11;
+};
+
+function resultRow(item, index, refresh) {
+  const row = el('div', 'search-result' + (item.pending ? ' pending' : '') + (index === activeResult ? ' active' : ''));
+  row.id = 'result-' + item.id;
+  row.setAttribute('role', 'option');
+  row.setAttribute('aria-selected', String(index === activeResult));
+  const main = el('div', 'search-result-main');
+  const name = el('div', 'search-result-name', item.name);
+  if (item.priority) name.append(el('span', 'pill priority', 'Prioridade'));
+  main.append(name, el('div', 'search-result-affiliation', item.affiliation || 'Sem afiliação'));
+  const facts = el('div', 'search-result-facts');
+  facts.append(el('span', 'search-cpf', item.cpf_prefix ? 'CPF ' + item.cpf_prefix + '…' : 'Sem CPF'),
+    el('span', '', 'Guichê ' + item.guiche),
+    el('span', 'search-status status-' + item.status, item.pending && !['registered', 'completed'].includes(item.status)
+      ? 'Chegou; aguarda orientação' : statusText[item.status] || item.status));
+  if (item.pending) facts.append(el('span', 'pill pending-pill', 'Pendência: orientar a procurar a coordenação'));
+  const action = el('div', 'search-result-action');
+  if (item.status === 'registered') {
+    action.append(actionButton(item.pending ? 'Registrar chegada' : 'Solicitar separação',
+      'button small' + (item.pending ? ' warning' : ''), () => ask('request', item)));
+  }
+  row.append(main, facts, action);
+  row.addEventListener('click', event => {
+    if (event.target.closest('button')) return;
+    activeResult = index;
+    renderSearch(refresh);
+  });
+  return row;
+}
+
+function renderSearch(refresh) {
+  const query = $('queue-filter').value.trim();
+  const panel = $('search-panel'), list = $('search-results');
+  panel.classList.toggle('hidden', !query);
+  $('queue-filter').setAttribute('aria-expanded', String(Boolean(query)));
+  list.replaceChildren(...searchResults.map((item, index) => resultRow(item, index, refresh)));
+  const active = searchResults[activeResult];
+  if (active) {
+    $('queue-filter').setAttribute('aria-activedescendant', 'result-' + active.id);
+    $('result-' + active.id).scrollIntoView({block: 'nearest'});
+  } else {
+    $('queue-filter').removeAttribute('aria-activedescendant');
+  }
+}
+
+async function runSearch(refresh) {
+  const query = $('queue-filter').value.trim();
+  const seq = ++searchSeq;
+  if (!query) {
+    searchResults = [];
+    activeResult = -1;
+    renderSearch(refresh);
+    renderQueue(refresh);
+    return;
+  }
+  try {
+    const data = await api('/api/participants/search?q=' + encodeURIComponent(query));
+    if (seq !== searchSeq) return;
+    const activeId = searchResults[activeResult]?.id;
+    searchResults = data.items;
+    activeResult = Math.max(searchResults.findIndex(item => item.id === activeId), searchResults.length ? 0 : -1);
+    // O aviso da última solicitação fica visível até a próxima busca digitada.
+    $('search-summary').textContent = searchNotice || !data.total ? searchNotice || 'Nenhum participante encontrado.'
+      : data.total > searchResults.length ? `${data.total} encontrados; mostrando os ${searchResults.length} primeiros. Refine a busca.`
+      : `${data.total} ${data.total === 1 ? 'participante encontrado' : 'participantes encontrados'}.`;
+    renderSearch(refresh);
+    renderQueue(refresh);
+  } catch (err) {
+    if (seq === searchSeq) message('page-error', err.message);
+  }
+}
+
+function initSearch(refresh) {
+  const input = $('queue-filter');
+  input.addEventListener('input', () => {
+    searchNotice = '';
+    renderQueue(refresh);
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => runSearch(refresh), 250);
+  });
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      input.value = '';
+      searchNotice = '';
+      runSearch(refresh);
+      return;
+    }
+    if (!searchResults.length) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      activeResult = (activeResult + step + searchResults.length) % searchResults.length;
+      renderSearch(refresh);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const item = searchResults[activeResult];
+      if (!item) return;
+      if (item.status === 'registered') ask('request', item);
+      else $('search-summary').textContent = searchNotice = `${item.name}: ${statusText[item.status] || item.status}. Não há separação a solicitar.`;
+    }
+  });
+}
+
 async function showDeskHeading() {
-  const requested = new URLSearchParams(location.search).get('guiche') || '';
+  const params = new URLSearchParams(location.search);
+  const requested = params.get('guiche') || '';
   desk = requested === 'all' ? '' : requested || (session.user.role === 'attendant' ? session.user.guiche : '');
-  $('guiche-title').textContent = desk ? 'GUICHÊ ' + desk : 'TODOS OS GUICHÊS';
+  withoutPriority = !desk && params.get('exclude') === 'priority';
+  $('guiche-title').textContent = desk ? 'GUICHÊ ' + desk : withoutPriority ? 'GUICHÊS GERAIS' : 'TODOS OS GUICHÊS';
   $('guiche-title').closest('.attendant-heading').classList.toggle('all-desks', !desk);
   if (!desk) {
-    $('guiche-range').textContent = 'Visualização de todos os guichês';
+    $('guiche-range').textContent = withoutPriority ? 'Todos os guichês, exceto o de prioridade'
+      : 'Visualização de todos os guichês';
     return;
   }
   try {
@@ -172,12 +309,14 @@ async function showDeskHeading() {
 
 async function refresh() {
   try {
-    const query = mode === 'attendant' ? '?view=attendant&guiche=' + encodeURIComponent(desk || 'all')
+    const query = mode === 'attendant' ? '?view=attendant&guiche=' + encodeURIComponent(desk || 'all') +
+      (withoutPriority ? '&exclude=priority' : '')
       : desk ? '?guiche=' + encodeURIComponent(desk) : '';
     const data = await api('/api/queue' + query);
     items = data.items;
     priorityDesk = data.priority_guiche || '';
     renderQueue(refresh);
+    if (mode === 'attendant' && $('queue-filter').value.trim()) await runSearch(refresh);
     $('last-update').textContent = 'Atualizado ' + clockTime();
     message('page-error', '');
   } catch (err) {
@@ -188,7 +327,8 @@ async function refresh() {
 await loadEventConfig();
 if (await requireSession(['volunteer', 'attendant', 'admin'])) {
   if (mode === 'attendant') await showDeskHeading();
-  $('queue-filter').addEventListener('input', () => renderQueue(refresh));
+  if (mode === 'attendant') initSearch(refresh);
+  else $('queue-filter').addEventListener('input', () => renderQueue(refresh));
   initDialog(refresh);
   await refresh();
   setInterval(refresh, 5000);

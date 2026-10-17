@@ -13,6 +13,7 @@ from support import CredenciamentoTestCase
 class QueueAndStatusTest(CredenciamentoTestCase):
     def test_complete_flow_and_atomic_claim(self):
         code, done, _ = self.request("/api/checkin", {"cpf": "12345678901"})
+        done.pop("ticket")
         self.assertEqual((code, done), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": False, "guiche": "1", "guiche_ranges": [{"from": "A", "to": "D"}], "guiche_priority": False}))
         users = [self.login("vol1"), self.login("vol2")]
         with database.connect() as db:

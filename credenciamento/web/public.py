@@ -2,10 +2,11 @@
 import re
 
 from .. import settings
-from ..auth import SESSION_SECONDS, allowed, check_password, create_session, csrf_token, over_limit, record
+from ..auth import (SESSION_SECONDS, allowed, check_password, checkin_ticket, create_session, csrf_token, over_limit,
+                    record, ticket_participant)
 from ..common import mask_public_text, now
 from ..csv_io import export_csv
-from ..db import connect, pending_reasons, update_participant
+from ..db import connect, get_participant, pending_reasons, update_participant
 from ..desks import desk_ranges, priority_guiche
 from ..event_theme import event_config
 from ..lookup import cpf_key, email_key
@@ -76,6 +77,10 @@ def checkin(req, user, data):
             # Um mesmo e-mail pode estar em mais de uma inscrição; não dá para saber qual é a da pessoa.
             return req.respond(409, {"error": "Há mais de uma inscrição com este e-mail."})
         row = matches[0]
+        if row["status"] == "completed":
+            # Já retirou crachá e kit: se não foi a própria pessoa, um voluntário verifica.
+            return req.respond(409, {"error": "Esta inscrição já foi credenciada. Se for um erro, procure um voluntário.",
+                                     "already": True, "completed": True})
         if row["status"] != "registered":
             # Quem já fez o pré-check-in não recebe de novo o guichê (nem o nome): o resultado
             # fica salvo no celular de quem fez, e uma segunda busca não deve orientar ninguém.
@@ -86,11 +91,23 @@ def checkin(req, user, data):
         db.commit()
     export_csv()
     # The public page never learns why a registration is pending.
-    result = {"ok": True, "name": mask_public_text(row["name"]), "needs_guidance": needs_guidance}
+    result = {"ok": True, "name": mask_public_text(row["name"]), "needs_guidance": needs_guidance,
+              "ticket": checkin_ticket(row["id"])}
     if not needs_guidance:
         result.update(guiche=row["guiche"], guiche_ranges=desk_ranges(row["guiche"]),
                       guiche_priority=row["guiche"] == priority_guiche())
     return req.respond(200, result)
+
+
+@route("POST", "/api/checkin/status")
+def checkin_status(req, user, data):
+    """O celular de quem fez o pré-check-in pergunta se o credenciamento já foi concluído."""
+    pid = ticket_participant(data.get("ticket"))
+    if not pid:
+        return req.respond(400, {"error": "Comprovante inválido."})
+    with connect() as db:
+        row = get_participant(db, pid)
+    return req.respond(200, {"completed": bool(row) and row["status"] == "completed"})
 
 
 @route("POST", "/api/login")
