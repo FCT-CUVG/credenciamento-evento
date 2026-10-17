@@ -466,6 +466,7 @@ dialog .actions .button { flex: 1; }
 .pill.pending-pill { background: #fde2c4; color: #70410f; white-space: normal; }
 .search-result-action .button.small { min-height: 40px; white-space: nowrap; }
 .button.warning { background: #bf6d22; }
+.link-button { padding: 0; border: 0; background: none; color: var(--navy-header); font: inherit; font-weight: 800; text-decoration: underline; }
 @media (max-width: 800px) {
   .search-result { grid-template-columns: 1fr; }
 }

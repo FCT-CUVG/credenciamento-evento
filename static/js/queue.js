@@ -49,10 +49,7 @@ function initDialog(refresh) {
       $('confirm-dialog').close();
       await refresh();
       if (action === 'request') {
-        searchNotice = item.pending
-          ? `Chegada de ${item.name} registrada. Oriente a pessoa a procurar a coordenação para resolver a pendência.`
-          : `Separação solicitada para ${item.name}.`;
-        $('search-summary').textContent = searchNotice;
+        showNotice(`Chegada de ${item.name} registrada. Oriente a pessoa a procurar a coordenação para resolver a pendência.`);
       }
     } catch (err) {
       $('confirm-dialog').close();
@@ -175,13 +172,52 @@ const statusText = {
   registered: 'Ainda não chegou', prechecked: 'Aguardando busca', searching: 'Em busca',
   ready: 'Pronto no guichê', completed: 'Já credenciado'
 };
-let searchResults = [], activeResult = -1, searchSeq = 0, searchTimer = null, searchNotice = '';
+let searchResults = [], activeResult = -1, searchSeq = 0, searchTimer = null, searchNotice = null;
 
 // CPF completo ou e-mail: o navegador não tem esses dados, então as colunas usam o resultado do servidor.
 const exactSearch = () => {
   const query = $('queue-filter').value.trim();
   return query.includes('@') || query.replace(/\D/g, '').length === 11;
 };
+
+// Aviso da última ação da busca; fica visível até a próxima busca digitada.
+function showNotice(text, undo) {
+  searchNotice = {text, undo};
+  const summary = $('search-summary');
+  summary.replaceChildren(text);
+  if (undo) {
+    const button = el('button', 'link-button', 'Desfazer');
+    button.type = 'button';
+    button.addEventListener('click', undo);
+    summary.append(' ', button);
+  }
+}
+
+// Enter (ou o botão) manda direto para a separação. Com pendência, confirma antes: a pessoa
+// não entra na fila até a coordenação resolver.
+async function sendToSeparation(item, refresh) {
+  if (item.pending) {
+    ask('request', item);
+    return;
+  }
+  try {
+    await api('/api/action/request', {id: item.id});
+    await refresh();
+    showNotice(`${item.name} foi para a separação (guichê ${item.guiche}).`, async () => {
+      try {
+        await api('/api/action/undo_request', {id: item.id});
+        await refresh();
+        showNotice(`Pedido de separação de ${item.name} desfeito.`);
+      } catch (err) {
+        showNotice(`Não foi possível desfazer: ${err.message}`);
+      }
+      $('queue-filter').focus();
+    });
+  } catch (err) {
+    await refresh();
+    message('page-error', err.message);
+  }
+}
 
 function resultRow(item, index, refresh) {
   const row = el('div', 'search-result' + (item.pending ? ' pending' : '') + (index === activeResult ? ' active' : ''));
@@ -201,7 +237,7 @@ function resultRow(item, index, refresh) {
   const action = el('div', 'search-result-action');
   if (item.status === 'registered') {
     action.append(actionButton(item.pending ? 'Registrar chegada' : 'Solicitar separação',
-      'button small' + (item.pending ? ' warning' : ''), () => ask('request', item)));
+      'button small' + (item.pending ? ' warning' : ''), () => sendToSeparation(item, refresh)));
   }
   row.append(main, facts, action);
   row.addEventListener('click', event => {
@@ -244,7 +280,7 @@ async function runSearch(refresh) {
     searchResults = data.items;
     activeResult = Math.max(searchResults.findIndex(item => item.id === activeId), searchResults.length ? 0 : -1);
     // O aviso da última solicitação fica visível até a próxima busca digitada.
-    $('search-summary').textContent = searchNotice || !data.total ? searchNotice || 'Nenhum participante encontrado.'
+    if (!searchNotice) $('search-summary').textContent = !data.total ? 'Nenhum participante encontrado.'
       : data.total > searchResults.length ? `${data.total} encontrados; mostrando os ${searchResults.length} primeiros. Refine a busca.`
       : `${data.total} ${data.total === 1 ? 'participante encontrado' : 'participantes encontrados'}.`;
     renderSearch(refresh);
@@ -257,7 +293,7 @@ async function runSearch(refresh) {
 function initSearch(refresh) {
   const input = $('queue-filter');
   input.addEventListener('input', () => {
-    searchNotice = '';
+    searchNotice = null;
     renderQueue(refresh);
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => runSearch(refresh), 250);
@@ -265,7 +301,7 @@ function initSearch(refresh) {
   input.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       input.value = '';
-      searchNotice = '';
+      searchNotice = null;
       runSearch(refresh);
       return;
     }
@@ -279,8 +315,10 @@ function initSearch(refresh) {
       event.preventDefault();
       const item = searchResults[activeResult];
       if (!item) return;
-      if (item.status === 'registered') ask('request', item);
-      else $('search-summary').textContent = searchNotice = `${item.name}: ${statusText[item.status] || item.status}. Não há separação a solicitar.`;
+      if (item.status === 'registered') sendToSeparation(item, refresh);
+      else showNotice(`${item.name}: ${item.status === 'completed' ? 'já credenciado'
+        : item.status === 'ready' ? 'material já pronto no guichê ' + item.guiche
+        : 'já está na separação'}. Não há o que solicitar.`);
     }
   });
 }

@@ -39,6 +39,9 @@ def queue_action_fields(action, user, row):
     # Com pendência, a chegada fica registrada, mas a pessoa só entra na fila depois de resolvida.
     if action == "request" and staff and row["status"] == "registered":
         return {"status": "prechecked", "prechecked_at": stamp}
+    # Desfaz um pedido feito por engano, enquanto ninguém assumiu a busca.
+    if action == "undo_request" and staff and row["status"] == "prechecked":
+        return {"status": "registered", "prechecked_at": None}
     if action == "claim" and staff and row["status"] == "prechecked" and clear:
         return {"status": "searching", "claimed_by": username, "claimed_at": stamp}
     if action == "ready" and staff and row["status"] == "searching" and clear and owns_search:

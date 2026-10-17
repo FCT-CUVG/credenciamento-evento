@@ -49,6 +49,13 @@ class DeskSearchTest(CredenciamentoTestCase):
             event = db.execute("SELECT action, actor FROM events WHERE participant_id=? ORDER BY rowid DESC",
                                (pid,)).fetchone()
         self.assertEqual(tuple(event), ("request", "att1"))
+        # Pedido por engano: dá para desfazer enquanto ninguém assumiu a busca.
+        code, result, _ = self.request("/api/action/undo_request", {"id": pid}, *attendant)
+        self.assertEqual((code, result["item"]["status"], result["item"]["prechecked_at"]), (200, "registered", None))
+        self.assertEqual(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["items"], [])
+        self.assertEqual(self.request("/api/action/request", {"id": pid}, *attendant)[0], 200)
+        self.assertEqual(self.request("/api/action/claim", {"id": pid}, *self.login("vol1"))[0], 200)
+        self.assertEqual(self.request("/api/action/undo_request", {"id": pid}, *attendant)[0], 409)
 
     def test_pending_registration_is_flagged_and_stays_out_of_the_queue(self):
         csv_io.import_text(json.dumps([{"nome": "Ána Silva", "email": "ana@example.org", "cpf": "12345678901",

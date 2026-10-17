@@ -95,7 +95,7 @@ def logout(req, user, data):
 @route("POST", "/api/action/", roles=STAFF, prefix=True)
 def queue_action(req, user, data):
     action = req.api_path.removeprefix("/api/action/")
-    if action not in ("request", "claim", "ready", "release", "complete", "undo_ready", "undo_complete"):
+    if action not in ("request", "undo_request", "claim", "ready", "release", "complete", "undo_ready", "undo_complete"):
         return req.respond(404, {"error": "Ação desconhecida."})
     pid = str(data.get("id", ""))
     with connect() as db:
