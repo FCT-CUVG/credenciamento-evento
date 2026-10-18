@@ -159,6 +159,7 @@
         <button class="tab" id="participants-tools-title" type="button" role="tab" aria-selected="true" aria-controls="participants-tools">Participantes</button>
         <button class="tab" id="guiches-tools-title" type="button" role="tab" aria-selected="false" aria-controls="guiches-tools" tabindex="-1">Configuração dos guichês</button>
         <button class="tab" id="payment-tools-title" type="button" role="tab" aria-selected="false" aria-controls="payment-tools" tabindex="-1">Pagamento</button>
+        <button class="tab" id="backup-tools-title" type="button" role="tab" aria-selected="false" aria-controls="backup-tools" tabindex="-1">Backup e limpeza</button>
         <button class="tab" id="theme-tools-title" type="button" role="tab" aria-selected="false" aria-controls="theme-tools" tabindex="-1">Identidade visual</button>
       </div>
       <section class="dashboard-tool" id="participants-tools" role="tabpanel" aria-labelledby="participants-tools-title">
@@ -218,6 +219,29 @@
           <button class="button small" id="payment-save" type="button">Salvar situações</button>
         </div>
         <p id="payment-status" class="muted" role="status"></p>
+      </section>
+      <section class="dashboard-tool" id="backup-tools" role="tabpanel" aria-labelledby="backup-tools-title" hidden>
+        <p>O backup é um arquivo com todos os participantes, com a situação de cada um (quem já foi credenciado, horários, quem buscou), e todo o histórico de movimentações. Contas da equipe e configurações (guichês, pagamento, identidade visual) não entram e não são apagadas.</p>
+        <div class="backup-block">
+          <h3>Baixar backup</h3>
+          <p class="muted">Guarde o arquivo em lugar seguro. Ele não tem CPF nem e-mail, só as chaves de busca deste servidor.</p>
+          <button class="button small" id="backup-download" type="button">Baixar backup agora</button>
+        </div>
+        <form class="backup-block" id="restore-form">
+          <h3>Restaurar backup</h3>
+          <p class="muted">Troca <strong>todos</strong> os participantes e o histórico atuais pelos do arquivo, inclusive quem já foi credenciado. O estado atual é guardado antes no servidor.</p>
+          <label class="field">Arquivo de backup (.json)<input id="restore-file" type="file" accept=".json,application/json" required></label>
+          <p id="restore-summary" class="muted"></p>
+          <label class="field">Digite RESTAURAR para confirmar<input id="restore-confirm" autocomplete="off"></label>
+          <button class="button small" type="submit" disabled>Restaurar backup</button>
+        </form>
+        <div class="backup-block danger-zone">
+          <h3>Limpar participantes e histórico</h3>
+          <p class="muted">Apaga todos os participantes e o histórico de movimentações. Antes, o painel baixa o backup e guarda uma cópia no servidor. Contas da equipe e configurações continuam.</p>
+          <label class="field">Digite LIMPAR para confirmar<input id="clear-confirm" autocomplete="off"></label>
+          <button class="button small danger" id="clear-participants" type="button" disabled>Baixar backup e limpar</button>
+        </div>
+        <p id="backup-status" class="muted" role="status"></p>
       </section>
       <section class="dashboard-tool" id="theme-tools" role="tabpanel" aria-labelledby="theme-tools-title" hidden>
         <p>Nome, cores e logo do evento em todas as páginas, inclusive a pública. As mudanças valem na hora para quem abrir ou recarregar uma página. <span id="theme-origin" class="muted"></span></p>

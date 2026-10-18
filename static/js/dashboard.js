@@ -1,5 +1,6 @@
 // Painel detalhado da coordenação: números, tabela de participantes e ferramentas.
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
+import {initBackup} from './dashboard/backup.js';
 import {initBatch, renderBatch} from './dashboard/batch.js';
 import {initPayment} from './dashboard/payment.js';
 import {fillCountryFilter, fillDeskFilter, fillPaymentFilter, renderDashboard, renderDashboardKeepingFocus,
@@ -260,6 +261,7 @@ if (await requireSession(['admin'])) {
   initFilters();
   initTableEvents();
   initBatch(refresh);
+  initBackup(refresh);
   $('checkin-toggle').addEventListener('click', toggleCheckin);
   await Promise.all([refresh(), initTools(refresh), initTheme(), initPayment(refresh)]);
   setInterval(refresh, 10000);

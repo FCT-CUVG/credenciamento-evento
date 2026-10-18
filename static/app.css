@@ -573,3 +573,11 @@ dialog .actions .button { flex: 1; }
 .queue-position { position: absolute; top: 0; left: 0; display: grid; place-items: center; min-width: 40px; height: 36px; padding: 0 5px; border-radius: 0 0 8px 0; background: var(--navy-header); color: var(--white); font: 400 1.75rem/1 "Event Display", sans-serif; }
 .queue-arrival { position: absolute; bottom: 3px; left: 4px; color: var(--slate); font-size: .72rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .volunteer-card.has-position { min-height: 74px; }
+
+/* Aba Backup e limpeza */
+.backup-block { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid #e0e4ea; border-radius: 8px; background: var(--white); }
+.backup-block h3 { margin: 0; color: var(--navy); font-size: 1.05rem; }
+.backup-block > .button { justify-self: start; }
+.danger-zone { border-color: #efb1b1; border-left: 4px solid #c0392b; background: #fff8f7; }
+.button.danger { background: #b3261e; }
+.button.danger:disabled, .backup-block .button:disabled { opacity: .5; cursor: not-allowed; }

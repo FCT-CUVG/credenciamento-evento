@@ -17,6 +17,8 @@ from ..event_theme import remove_logo, reset_theme, save_logo, save_theme, theme
 from ..lookup import cpf_key, email_key
 from ..participants import public_checkin_state, set_public_checkin
 from ..payments import ok_statuses, payment_options, save_payment_config
+from ..snapshot import (backup_bytes, backup_filename, build_backup, clear_participants, restore_backup,
+                        save_server_copy)
 from .routes import ADMIN, route
 
 
@@ -312,3 +314,51 @@ def balance_desks(req, user, data):
 @route("POST", "/api/participants/status", roles=ADMIN, forbidden="Somente a coordenação pode alterar a situação.")
 def set_status(req, user, data):
     return apply_change(req, user, data, "status", str(data.get("status", "")))
+
+
+@route("GET", "/api/backup/download", roles=ADMIN)
+def download_backup(req, user, data):
+    """Participantes completos (situação, horários) e todo o histórico, num arquivo restaurável."""
+    with connect() as db:
+        backup = build_backup(db)
+    return req.send_file(backup_filename(), backup_bytes(backup), "application/json; charset=utf-8")
+
+
+@route("POST", "/api/participants/clear", roles=ADMIN,
+       forbidden="Somente a coordenação pode limpar os participantes.")
+def clear_all(req, user, data):
+    """Apaga participantes e histórico (contas e configurações ficam). Guarda antes uma cópia
+    no servidor, além da que o painel baixa."""
+    if data.get("confirm") != "LIMPAR":
+        return req.respond(400, {"error": "Digite LIMPAR para confirmar."})
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        copy = save_server_copy(build_backup(db), "antes-de-limpar")
+        people, events = clear_participants(db)
+        db.commit()
+    export_csv()
+    print(f"Participantes e histórico apagados por {user['username']}: {people} participantes, {events} eventos. "
+          f"Cópia em {copy}", flush=True)
+    return req.respond(200, {"participants": people, "events": events, "server_copy": copy.name})
+
+
+@route("POST", "/api/backup/restore", roles=ADMIN, max_body=60_000_000,
+       forbidden="Somente a coordenação pode restaurar um backup.")
+def restore(req, user, data):
+    """Troca participantes e histórico pelos do backup; o estado anterior fica guardado no servidor."""
+    if data.get("confirm") != "RESTAURAR":
+        return req.respond(400, {"error": "Digite RESTAURAR para confirmar."})
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        copy = save_server_copy(build_backup(db), "antes-de-restaurar")
+        try:
+            people, events = restore_backup(db, data.get("backup"))
+        except (ValueError, sqlite3.IntegrityError) as exc:
+            db.execute("ROLLBACK")
+            message = str(exc) if isinstance(exc, ValueError) else "Backup com dados repetidos ou inconsistentes."
+            return req.respond(400, {"error": message})
+        db.commit()
+    export_csv()
+    print(f"Backup restaurado por {user['username']}: {people} participantes, {events} eventos. "
+          f"Estado anterior em {copy}", flush=True)
+    return req.respond(200, {"participants": people, "events": events, "server_copy": copy.name})
