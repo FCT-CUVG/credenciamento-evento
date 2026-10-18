@@ -144,7 +144,10 @@ function queueCard(item, refresh) {
     actions.append(actionButton('Voltar para busca', 'button secondary small', () => ask('undo_ready', item)));
     if (mode === 'attendant') actions.append(actionButton('Confirmar retirada', 'button', () => ask('complete', item)));
   }
-  if (actions.childElementCount) content.append(actions);
+  // Na separação, os botões ficam numa coluna à direita, na altura toda do cartão: o cartão
+  // fica só com a altura do texto e cabem mais pessoas na tela.
+  if (actions.childElementCount) (volunteer ? card : content).append(actions);
+  if (volunteer) card.classList.toggle('no-actions', !actions.childElementCount);
   if (mode === 'attendant' && item.status === 'completed' && canManageDesk) {
     content.append(actionButton('Voltar para prontos', 'button secondary small', () => ask('undo_complete', item)));
   }

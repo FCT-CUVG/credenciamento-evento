@@ -163,8 +163,7 @@ body[data-page="volunteer"] main, body[data-page="attendant"] main, body[data-pa
 .dashboard-data-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: -8px 0 18px; }
 /* Chega mais gente do que se busca: "Aguardando busca" ocupa metade da tela, em duas colunas de cartões. */
 .lane-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.waiting-lane .queue-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); align-content: start; }
-.waiting-lane .volunteer-card { grid-template-columns: minmax(0, 1fr) minmax(84px, 26%); }
+.waiting-lane .queue-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); align-content: start; }
 .lane-note { margin-left: 10px; color: var(--slate); font: 700 .8rem/1 "Event Body", sans-serif; letter-spacing: 0; text-transform: none; }
 .queue-card .arrival { font-size: .85rem; }
 .attendant-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
@@ -510,4 +509,32 @@ dialog .actions .button { flex: 1; }
   .search-results { max-height: 30vh; }
   /* Separação: cada coluna rola por dentro, mantendo títulos e busca à vista. */
   .lane-grid .queue-list { max-height: max(260px, calc(100vh - 290px)); overflow-y: auto; padding-right: 3px; }
+}
+
+/* Cartão da separação: texto | guichê | botões na altura toda (ex.: "Assumir busca"). */
+.queue-card.volunteer-card { grid-template-columns: minmax(0, 1fr) minmax(72px, 17%) minmax(112px, 27%); min-height: 0; }
+.queue-card.volunteer-card.no-actions { grid-template-columns: minmax(0, 1fr) minmax(72px, 17%); }
+.volunteer-card .queue-card-main { align-content: center; gap: 3px; padding: 10px 14px; }
+.volunteer-card .queue-card-main .meta { margin-top: 2px; }
+.volunteer-card .queue-guiche { padding: 8px 4px; }
+.volunteer-card .queue-guiche-value { font-size: clamp(2rem, 3vw, 2.8rem); }
+.volunteer-card .queue-guiche-value.long { font-size: clamp(.9rem, 22cqi, 1.4rem); }
+.volunteer-card > .queue-actions { flex-direction: column; gap: 0; align-self: stretch; }
+.volunteer-card > .queue-actions .button { flex: 1 1 auto; width: 100%; min-height: 40px; border-radius: 0; box-shadow: none; }
+.volunteer-card > .queue-actions .button:not(.secondary) { font-size: 1.15rem; line-height: 1.1; }
+.volunteer-card > .queue-actions .button.secondary { flex: 0 0 auto; min-height: 40px; font-size: .88rem; border-bottom: 1px solid #cfd8de; }
+.volunteer-card > .queue-actions .button.secondary:only-child { flex: 1 1 auto; border-bottom: 0; }
+/* Coluna estreita (ex.: "Em busca" em notebook): botões numa faixa embaixo do cartão. */
+.lane { container-type: inline-size; }
+@container (max-width: 400px) {
+  .queue-card.volunteer-card, .queue-card.volunteer-card.no-actions { grid-template-columns: minmax(0, 1fr) minmax(72px, 28%); }
+  .volunteer-card > .queue-actions { grid-column: 1 / -1; flex-direction: row; }
+  .volunteer-card > .queue-actions .button, .volunteer-card > .queue-actions .button.secondary { flex: 1 1 0; min-height: 42px; border-bottom: 0; }
+  .volunteer-card > .queue-actions .button.secondary:not(:only-child) { flex: 0 0 40%; border-right: 1px solid #cfd8de; }
+}
+@media (max-width: 600px) {
+  /* Celular: botões numa faixa embaixo, na largura toda. */
+  .queue-card.volunteer-card { grid-template-columns: minmax(0, 1fr) 84px; }
+  .volunteer-card > .queue-actions { grid-column: 1 / -1; flex-direction: row; }
+  .volunteer-card > .queue-actions .button { min-height: 48px; }
 }
