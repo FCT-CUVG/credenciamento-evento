@@ -70,3 +70,31 @@ def set_public_checkin(db, is_open, actor):
     set_setting(db, "public_checkin", state)
     print(f"Pré-check-in público {'aberto' if is_open else 'fechado'} por {actor}.", flush=True)
     return state
+
+
+# Intervalo de atualização automática das telas, em segundos (ajustável pela coordenação).
+REFRESH_DEFAULTS = {"queues": 5, "dashboards": 10}
+REFRESH_LIMITS = (2, 120)
+
+
+def refresh_intervals(db):
+    saved = get_setting(db, "refresh_seconds", {})
+    return {key: saved.get(key, default) for key, default in REFRESH_DEFAULTS.items()}
+
+
+def set_refresh_intervals(db, values, actor):
+    low, high = REFRESH_LIMITS
+    if not isinstance(values, dict):
+        raise ValueError("Intervalos inválidos.")
+    result = {}
+    for key, label in (("queues", "filas"), ("dashboards", "painéis")):
+        value = values.get(key)
+        if isinstance(value, str) and value.strip().isdigit():
+            value = int(value)
+        if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:
+            raise ValueError(f"Intervalo das {label}: use de {low} a {high} segundos.")
+        result[key] = value
+    set_setting(db, "refresh_seconds", result)
+    print(f"Atualização automática ajustada por {actor}: filas {result['queues']} s, "
+          f"painéis {result['dashboards']} s.", flush=True)
+    return result

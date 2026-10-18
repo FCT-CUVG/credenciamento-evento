@@ -15,7 +15,8 @@ from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, co
                      priority_guiche, save_ranges, validate_priority_guiche)
 from ..event_theme import remove_logo, reset_theme, save_logo, save_theme, theme_settings
 from ..lookup import cpf_key, email_key
-from ..participants import public_checkin_state, set_public_checkin
+from ..participants import (REFRESH_LIMITS, public_checkin_state, refresh_intervals, set_public_checkin,
+                            set_refresh_intervals)
 from ..payments import ok_statuses, payment_options, save_payment_config
 from ..snapshot import (backup_bytes, backup_filename, build_backup, clear_participants, restore_backup,
                         save_server_copy)
@@ -30,6 +31,7 @@ def dashboard(req, user, data):
         desks = available_guiches(db)
         checkin = public_checkin_state(db)
         payment_options_list = payment_options(db)
+        refresh = refresh_intervals(db)
     alert_limit, alert_window = settings.rate_limit("alert_miss")
     for desk in desks:
         desk["total"] = sum(r["guiche"] == desk["id"] for r in rows)
@@ -47,6 +49,7 @@ def dashboard(req, user, data):
                               "registration_pending": sum(r["status"] != "completed" and bool(pending_reasons(r))
                                                           for r in rows),
                               "payment_options": payment_options_list,
+                              "refresh": refresh, "refresh_seconds": refresh["dashboards"],
                               "items": [participant_dict(r, private=True) for r in rows]})
 
 
@@ -362,3 +365,14 @@ def restore(req, user, data):
     print(f"Backup restaurado por {user['username']}: {people} participantes, {events} eventos. "
           f"Estado anterior em {copy}", flush=True)
     return req.respond(200, {"participants": people, "events": events, "server_copy": copy.name})
+
+
+@route("POST", "/api/refresh-config", roles=ADMIN, forbidden="Somente a coordenação pode ajustar a atualização das telas.")
+def save_refresh(req, user, data):
+    """Intervalos de atualização automática: filas (separação e guichês) e painéis."""
+    with connect() as db:
+        try:
+            refresh = set_refresh_intervals(db, data, user["username"])
+        except ValueError as exc:
+            return req.respond(400, {"error": str(exc)})
+    return req.respond(200, {"refresh": refresh, "limits": REFRESH_LIMITS})

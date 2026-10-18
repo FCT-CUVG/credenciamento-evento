@@ -1,5 +1,5 @@
 // Painel resumido público: inscritos, chegadas e credenciados.
-import {$, api, loadEventConfig, message} from './common.js';
+import {$, api, autoRefresh, loadEventConfig, message} from './common.js';
 
 function setNumber(id, value) {
   const node = $(id);
@@ -14,11 +14,11 @@ async function refresh() {
     setNumber('stat-arrived', data.arrived);
     setNumber('stat-completed', data.completed);
     message('page-error', '');
+    return data.refresh_seconds;
   } catch (err) {
     message('page-error', err.message);
   }
 }
 
 await loadEventConfig();
-await refresh();
-setInterval(refresh, 10000);
+autoRefresh(refresh, (await refresh()) || 10);

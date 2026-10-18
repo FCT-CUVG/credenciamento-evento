@@ -287,6 +287,16 @@
         <p id="theme-status" class="muted" role="status"></p>
       </section>
       </div>
+      <section class="card dashboard-tool" aria-labelledby="refresh-title">
+        <h2 id="refresh-title">Atualização automática</h2>
+        <p>De quanto em quanto tempo as telas buscam novidades no servidor. Valores menores mostram as mudanças mais rápido, mas fazem mais acessos ao servidor.</p>
+        <form id="refresh-form" class="refresh-form">
+          <label class="field">Filas (Separação e Guichês), em segundos<input id="refresh-queues" type="number" min="2" max="120" required></label>
+          <label class="field">Painéis (detalhado e resumido), em segundos<input id="refresh-dashboards" type="number" min="2" max="120" required></label>
+          <button class="button small" type="submit">Salvar intervalos</button>
+        </form>
+        <p id="refresh-status" class="muted" role="status"></p>
+      </section>
       <section class="card dashboard-tool" aria-labelledby="google-sheets-title">
         <h2 id="google-sheets-title">Backup no Google Sheets</h2>
         <p>Crie uma planilha na conta que deve receber os dados. Ela continuará sendo uma cópia de segurança; o banco local é a fonte principal.</p>

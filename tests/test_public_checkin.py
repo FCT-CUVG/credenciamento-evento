@@ -37,7 +37,7 @@ class PublicCheckinTest(CredenciamentoTestCase):
         code, _, _ = self.request("/api/dashboard")
         self.assertEqual(code, 401)
         code, summary, _ = self.request("/api/dashboard/summary")
-        self.assertEqual((code, summary), (200, {"total": 3, "arrived": 2, "completed": 0}))
+        self.assertEqual((code, summary), (200, {"total": 3, "arrived": 2, "completed": 0, "refresh_seconds": 10}))
 
     def test_unpaid_participant_is_directed_to_attendance(self):
         admin = self.login("admin")

@@ -45,7 +45,7 @@ class QueueAndStatusTest(CredenciamentoTestCase):
         code, panel, _ = self.request("/api/dashboard", cookie=self.login("admin")[0])
         self.assertEqual((panel["total"], panel["counts"]["completed"]), (2, 1))
         code, summary, _ = self.request("/api/dashboard/summary")
-        self.assertEqual((code, summary), (200, {"total": 2, "arrived": 1, "completed": 1}))
+        self.assertEqual((code, summary), (200, {"total": 2, "arrived": 1, "completed": 1, "refresh_seconds": 10}))
         self.assertEqual(len(settings.CSV.read_text(encoding="utf-8").splitlines()), 3)
         with database.connect() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM events WHERE participant_id=?", (pid,)).fetchone()[0], 5)
@@ -119,6 +119,19 @@ class QueueAndStatusTest(CredenciamentoTestCase):
         self.assertEqual(tuple(row), (None, None, None, None))
         self.assertIn("status_completed", actions)
         self.assertIn("status_registered", actions)
+
+    def test_coordination_sets_how_often_screens_refresh(self):
+        admin = self.login("admin")
+        self.assertEqual(self.request("/api/queue", cookie=self.login("vol1")[0])[1]["refresh_seconds"], 5)
+        self.assertEqual(self.request("/api/dashboard", cookie=admin[0])[1]["refresh"], {"queues": 5, "dashboards": 10})
+        code, result, _ = self.request("/api/refresh-config", {"queues": 3, "dashboards": "20"}, *admin)
+        self.assertEqual((code, result["refresh"]), (200, {"queues": 3, "dashboards": 20}))
+        self.assertEqual(self.request("/api/queue", cookie=self.login("att1")[0])[1]["refresh_seconds"], 3)
+        self.assertEqual(self.request("/api/dashboard/summary")[1]["refresh_seconds"], 20)
+        for invalid in ({"queues": 1, "dashboards": 10}, {"queues": 5, "dashboards": 121}, {"queues": "x", "dashboards": 10},
+                        {"queues": True, "dashboards": 10}, {"dashboards": 10}):
+            self.assertEqual(self.request("/api/refresh-config", invalid, *admin)[0], 400)
+        self.assertEqual(self.request("/api/refresh-config", {"queues": 3, "dashboards": 20}, *self.login("vol1"))[0], 403)
 
     def test_status_fields_fill_previous_steps_and_clear_later_ones(self):
         row = {"prechecked_at": "t-arrival", "claimed_at": None, "ready_at": "t-ready",

@@ -10,7 +10,7 @@ from ..db import connect, get_participant, pending_reasons, update_participant
 from ..desks import desk_ranges, priority_guiche
 from ..event_theme import event_config
 from ..lookup import cpf_key, email_key
-from ..participants import public_checkin_state
+from ..participants import public_checkin_state, refresh_intervals
 from .routes import route
 
 
@@ -45,7 +45,8 @@ def summary(req, user, data):
                    COALESCE(SUM(status = 'completed'), 0)
             FROM participants
         """).fetchone()
-    return req.respond(200, {"total": total, "arrived": arrived, "completed": completed})
+        seconds = refresh_intervals(db)["dashboards"]
+    return req.respond(200, {"total": total, "arrived": arrived, "completed": completed, "refresh_seconds": seconds})
 
 
 @route("POST", "/api/checkin")

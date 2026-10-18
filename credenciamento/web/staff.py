@@ -8,7 +8,7 @@ from ..csv_io import export_csv
 from ..db import connect, get_participant, participant_dict, pending_reasons, update_participant
 from ..desks import auto_guiche, available_guiches, priority_guiche
 from ..lookup import cpf_key, email_key
-from ..participants import queue_action_fields
+from ..participants import queue_action_fields, refresh_intervals
 from .routes import STAFF, route
 
 
@@ -47,8 +47,9 @@ def queue(req, user, data):
         else:
             query += " ORDER BY priority DESC, prechecked_at ASC, name_key ASC"
         rows = db.execute(query, args).fetchall()
+        seconds = refresh_intervals(db)["queues"]
     return req.respond(200, {"items": [participant_dict(r) for r in rows], "guiche": guiche,
-                             "priority_guiche": priority_guiche()})
+                             "priority_guiche": priority_guiche(), "refresh_seconds": seconds})
 
 
 SEARCH_LIMIT = 30

@@ -1,5 +1,5 @@
 // Painel detalhado da coordenação: números, tabela de participantes e ferramentas.
-import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
+import {$, api, autoRefresh, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
 import {initBackup} from './dashboard/backup.js';
 import {initBatch, renderBatch} from './dashboard/batch.js';
 import {initPayment} from './dashboard/payment.js';
@@ -74,10 +74,46 @@ async function refresh() {
     $('sync-status').textContent = `Atualizado às ${clockTime()} · ${syncText(data)}`;
     renderDashboardKeepingFocus();
     renderBatch();
+    fillRefresh(data.refresh);
     message('page-error', '');
+    return data.refresh_seconds;
   } catch (err) {
     message('page-error', err.message);
   }
+}
+
+// Intervalos de atualização automática das telas, ajustados pela coordenação.
+let refreshEditing = false;
+
+function fillRefresh(refresh) {
+  if (!refresh || refreshEditing) return;
+  $('refresh-queues').value = refresh.queues;
+  $('refresh-dashboards').value = refresh.dashboards;
+}
+
+function initRefreshConfig() {
+  const form = $('refresh-form'), status = $('refresh-status');
+  form.addEventListener('input', () => { refreshEditing = true; });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button');
+    button.disabled = true;
+    try {
+      const result = await api('/api/refresh-config', {
+        queues: Number($('refresh-queues').value), dashboards: Number($('refresh-dashboards').value)
+      });
+      refreshEditing = false;
+      fillRefresh(result.refresh);
+      status.textContent = `Salvo. Filas a cada ${result.refresh.queues} s e painéis a cada ` +
+        `${result.refresh.dashboards} s; as telas abertas passam a usar na próxima atualização.`;
+      status.classList.remove('error');
+    } catch (err) {
+      status.textContent = err.message;
+      status.classList.add('error');
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 // Qualquer mudança de busca ou filtro volta para a primeira página.
@@ -263,6 +299,7 @@ if (await requireSession(['admin'])) {
   initBatch(refresh);
   initBackup(refresh);
   $('checkin-toggle').addEventListener('click', toggleCheckin);
-  await Promise.all([refresh(), initTools(refresh), initTheme(), initPayment(refresh)]);
-  setInterval(refresh, 10000);
+  initRefreshConfig();
+  const [seconds] = await Promise.all([refresh(), initTools(refresh), initTheme(), initPayment(refresh)]);
+  autoRefresh(refresh, seconds || 10);
 }

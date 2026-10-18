@@ -1,5 +1,5 @@
 // Filas da equipe: Separação (/busca, voluntários) e guichês (/fila, atendentes).
-import {$, api, clockTime, el, loadEventConfig, message, requireSession, searchKey, session} from './common.js';
+import {$, api, autoRefresh, clockTime, el, loadEventConfig, message, requireSession, searchKey, session} from './common.js';
 
 const mode = document.body.dataset.page === 'attendant' ? 'attendant' : 'volunteer';
 let items = [], desk = '', priorityDesk = '', withoutPriority = false, pendingAction = null;
@@ -392,6 +392,7 @@ async function refresh() {
     if (mode === 'attendant' && $('queue-filter').value.trim()) await runSearch(refresh);
     $('last-update').textContent = 'Atualizado ' + clockTime();
     message('page-error', '');
+    return data.refresh_seconds;
   } catch (err) {
     message('page-error', err.message);
   }
@@ -403,6 +404,5 @@ if (await requireSession(['volunteer', 'attendant', 'admin'])) {
   if (mode === 'attendant') initSearch(refresh);
   else $('queue-filter').addEventListener('input', () => renderQueue(refresh));
   initDialog(refresh);
-  await refresh();
-  setInterval(refresh, 5000);
+  autoRefresh(refresh, (await refresh()) || 5);
 }

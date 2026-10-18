@@ -161,3 +161,15 @@ export function movementTime(value) {
 
 export const clockTime = value =>
   (value ? new Date(value) : new Date()).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+
+// Atualização automática: refresh() devolve o intervalo (em segundos) definido pela coordenação;
+// a próxima rodada já usa o valor novo, sem recarregar a página.
+export function autoRefresh(refresh, fallbackSeconds) {
+  let seconds = fallbackSeconds;
+  const loop = async () => {
+    const next = await refresh();
+    if (Number.isFinite(next) && next > 0) seconds = next;
+    setTimeout(loop, seconds * 1000);
+  };
+  setTimeout(loop, seconds * 1000);
+}
