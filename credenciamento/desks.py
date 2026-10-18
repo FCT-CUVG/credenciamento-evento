@@ -275,6 +275,24 @@ def available_guiches(db):
     return [{"id": desk, "ranges": labels, "priority": desk == priority} for desk, labels in sorted(desks.items(), key=order)]
 
 
+def attendant_desk(db, value):
+    """Nome exato de um guichê existente (faixas, prioridade ou atribuído a participantes) para a
+    conta de um atendente, aceitando maiúsculas/minúsculas diferentes. A fila compara o nome
+    exato: uma conta com um guichê que não existe (ex.: "Prioridade" com o guichê de prioridade
+    chamado "P") veria a fila sempre vazia."""
+    value = str(value or "").strip()
+    desks = {str(r["guiche"]).strip() for r in configured_ranges()}
+    desks.add(priority_guiche())
+    desks.update(row["guiche"] for row in db.execute("SELECT DISTINCT guiche FROM participants"))
+    desks.discard("")
+    if value in desks:
+        return value
+    matches = [desk for desk in desks if desk.casefold() == value.casefold()]
+    if len(matches) != 1:
+        raise ValueError(f"Guichê {value!r} não existe. Guichês: " + ", ".join(sorted(desks)))
+    return matches[0]
+
+
 def mark_manual_desks(db):
     """Migração: guichês existentes diferentes da regra automática foram escolhidos na importação."""
     try:

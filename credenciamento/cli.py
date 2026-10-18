@@ -10,6 +10,7 @@ from .auth import end_user_sessions, password_hash
 from .bootstrap import init_db
 from .csv_io import export_csv, import_file
 from .db import backup_file, connect
+from .desks import attendant_desk
 from .event_theme import event_config
 from .lookup import lookup_ready
 from .participants import public_checkin_state, set_public_checkin
@@ -55,6 +56,12 @@ def main():
         import getpass
         if args.role == "attendant" and not args.guiche:
             parser.error("Atendente precisa de --guiche.")
+        if args.role == "attendant":
+            try:
+                with connect() as db:
+                    args.guiche = attendant_desk(db, args.guiche)
+            except ValueError as exc:
+                parser.error(str(exc))
         if args.gerar_senha:
             alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
             password = "-".join("".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(4))

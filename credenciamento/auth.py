@@ -52,6 +52,20 @@ def end_user_sessions(db, username):
     return db.execute("DELETE FROM sessions WHERE username=?", (username,)).rowcount
 
 
+def checkin_ticket(participant_id):
+    """Comprovante do pré-check-in guardado no celular: permite só consultar se a pessoa já foi
+    credenciada, sem que o navegador guarde CPF ou e-mail."""
+    signature = hmac.new(settings.SECRET, ("ticket:" + participant_id).encode(), hashlib.sha256).hexdigest()[:32]
+    return participant_id + "." + signature
+
+
+def ticket_participant(ticket):
+    participant_id, _, signature = str(ticket or "").rpartition(".")
+    if participant_id and hmac.compare_digest(checkin_ticket(participant_id), str(ticket)):
+        return participant_id
+    return None
+
+
 def csrf_token(session_token):
     return hmac.new(settings.SECRET, ("csrf:" + token_hash(session_token)).encode(), hashlib.sha256).hexdigest()
 

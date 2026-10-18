@@ -1,7 +1,7 @@
 // Tabela do painel detalhado: linhas, etapas da situação, afiliação editável, filtros e cards por guichê.
 import {$, el, movementTime, searchKey, statusNames} from '../common.js';
 
-export const state = {items: [], page: 1, affiliationEditing: null, lookup: null};
+export const state = {items: [], page: 1, affiliationEditing: null, lookup: null, paymentOptions: [], selected: new Set()};
 
 const hasPending = item =>
   !['registered', 'completed'].includes(item.status) && (!item.paid || !item.affiliation.trim());
@@ -81,17 +81,32 @@ function personCell(item) {
   return td;
 }
 
+// Situações de pagamento disponíveis; verde quando a situação libera o credenciamento.
+export const paymentValues = () => state.paymentOptions.map(option => option.value);
+
 function paymentCell(item) {
   const td = el('td'), select = el('select', 'payment-select ' + (item.paid ? 'is-paid' : 'is-unpaid'));
   select.setAttribute('aria-label', 'Alterar pagamento de ' + item.name);
   select.dataset.participantId = item.id;
-  for (const [value, label] of [['0', 'Não pago'], ['1', 'Pago']]) {
-    const option = el('option', '', label);
+  const values = paymentValues();
+  if (!values.includes(item.payment_status)) values.push(item.payment_status);
+  for (const value of values) {
+    const option = el('option', '', value);
     option.value = value;
-    option.selected = (value === '1') === item.paid;
+    option.selected = value === item.payment_status;
     select.append(option);
   }
   td.append(select);
+  return td;
+}
+
+function selectCell(item) {
+  const td = el('td', 'select-cell'), box = el('input', 'row-select');
+  box.type = 'checkbox';
+  box.checked = state.selected.has(item.id);
+  box.dataset.participantId = item.id;
+  box.setAttribute('aria-label', 'Selecionar ' + item.name);
+  td.append(box);
   return td;
 }
 
@@ -117,17 +132,28 @@ function movementCell(item) {
   return td;
 }
 
-function filteredItems() {
+// Filtro de pagamento: "ok" (libera), "pending" (não libera) ou "s:" + situação.
+function paymentMatches(item, filter) {
+  if (!filter) return true;
+  if (filter === 'ok') return item.paid;
+  if (filter === 'pending') return !item.paid;
+  return searchKey(item.payment_status) === searchKey(filter.slice(2));
+}
+
+export function filteredItems() {
   const raw = $('dashboard-filter').value, text = searchKey(raw), status = $('status-filter').value;
   // CPF ou e-mail completo: vale a resposta do servidor (state.lookup), não o texto das linhas.
   const lookup = state.lookup?.text === raw ? state.lookup.ids : null;
   const priority = $('priority-filter').value, paid = $('payment-filter').value, desk = $('desk-filter').value;
+  const country = $('country-filter').value;
   return state.items.filter(item =>
     (!status || statusKey(item) === status) &&
     (!priority || item.priority === (priority === '1')) &&
-    (!paid || item.paid === (paid === '1')) &&
+    paymentMatches(item, paid) &&
+    (!country || (country === '__none' ? !item.country : item.country === country)) &&
     (!desk || item.guiche === desk) &&
-    (lookup ? lookup.has(item.id) : searchKey(`${item.name} ${item.badge_name} ${item.affiliation} ${item.guiche}`).includes(text)));
+    (lookup ? lookup.has(item.id)
+      : searchKey(`${item.name} ${item.badge_name} ${item.affiliation} ${item.country} ${item.guiche}`).includes(text)));
 }
 
 export function renderDashboard() {
@@ -144,18 +170,22 @@ export function renderDashboard() {
   $('page-next').disabled = state.page === pages;
   if (!rows.length) {
     const row = el('tr'), cell = el('td', 'muted', 'Nenhum participante encontrado.');
-    cell.colSpan = 8;
+    cell.colSpan = 10;
     row.append(cell);
     body.append(row);
+    syncPageCheckbox();
     return;
   }
   for (const item of rows) {
     const tr = el('tr'), situation = el('td');
     situation.append(statusStepper(item));
-    tr.append(personCell(item), el('td', '', item.badge_name), affiliationCell(item), paymentCell(item),
+    tr.classList.toggle('selected', state.selected.has(item.id));
+    tr.append(selectCell(item), personCell(item), el('td', '', item.badge_name), affiliationCell(item),
+      el('td', item.country ? '' : 'muted', item.country || '—'), paymentCell(item),
       priorityCell(item), el('td', '', item.guiche), situation, movementCell(item));
     body.append(tr);
   }
+  syncPageCheckbox();
 }
 
 // Redesenha a tabela devolvendo o foco ao mesmo controle; só espera se um seletor estiver em uso.
@@ -166,11 +196,46 @@ export function renderDashboardKeepingFocus() {
     return;
   }
   // Não interrompe quem está escolhendo num seletor ou digitando a afiliação.
-  if (active instanceof HTMLSelectElement || active instanceof HTMLInputElement) return;
+  if (active instanceof HTMLSelectElement || (active instanceof HTMLInputElement && active.type !== 'checkbox')) return;
   const id = active.dataset.participantId, status = active.dataset.status, kind = active.classList[0];
   renderDashboard();
   const selector = `.${kind}[data-participant-id="${id}"]` + (status ? `[data-status="${status}"]` : '');
   body.querySelector(selector)?.focus({preventScroll: true});
+}
+
+// O cabeçalho marca/desmarca a página atual; fica "meio marcado" quando só parte dela está selecionada.
+export function pageItems() {
+  const matches = filteredItems(), size = Number($('page-size').value), first = (state.page - 1) * size;
+  return matches.slice(first, first + size);
+}
+
+export function syncPageCheckbox() {
+  const rows = pageItems(), chosen = rows.filter(item => state.selected.has(item.id)).length;
+  const box = $('select-page');
+  box.checked = rows.length > 0 && chosen === rows.length;
+  box.indeterminate = chosen > 0 && chosen < rows.length;
+}
+
+// Reconstrói um filtro mantendo a escolha atual, se ela ainda existir.
+function fillSelect(select, entries) {
+  const current = select.value;
+  select.replaceChildren(...entries.map(([value, label]) => {
+    const option = el('option', '', label);
+    option.value = value;
+    return option;
+  }));
+  select.value = entries.some(([value]) => value === current) ? current : '';
+}
+
+export function fillPaymentFilter() {
+  fillSelect($('payment-filter'), [['', 'Todos'], ['ok', 'Libera o credenciamento'], ['pending', 'Não libera'],
+    ...state.paymentOptions.map(option => ['s:' + option.value, option.value])]);
+}
+
+export function fillCountryFilter() {
+  const countries = [...new Set(state.items.map(item => item.country).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  fillSelect($('country-filter'), [['', 'Todos'], ['__none', 'Sem país'], ...countries.map(country => [country, country])]);
 }
 
 export function fillDeskFilter(desks) {
