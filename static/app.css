@@ -538,3 +538,31 @@ dialog .actions .button { flex: 1; }
   .volunteer-card > .queue-actions { grid-column: 1 / -1; flex-direction: row; }
   .volunteer-card > .queue-actions .button { min-height: 48px; }
 }
+
+/* Painel: seleção e alteração em lote */
+.select-cell { width: 44px; padding-right: 4px; }
+.select-cell input { width: 20px; height: 20px; accent-color: var(--navy-header); cursor: pointer; }
+#dashboard-body tr.selected td { background: #eef4fa; }
+.batch-bar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; margin: 0 0 12px; padding: 10px 14px; background: var(--white); border: 1px solid #d5dbe4; border-left: 4px solid #d5dbe4; }
+.batch-bar.has-selection { position: sticky; top: 0; z-index: 5; border-left-color: var(--navy-header); box-shadow: 0 6px 16px rgba(28,29,58,.08); }
+.batch-selection { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.batch-selection strong { color: var(--navy); }
+.batch-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; }
+.batch-form .button.small { min-height: 42px; }
+.batch-result { flex-basis: 100%; }
+.batch-result:empty { display: none; }
+.batch-result p { margin: 0; padding: 8px 10px; border-radius: 6px; background: #e7f3ea; color: #185d2d; font-weight: 700; }
+.batch-result.error p { background: #fff0e6; color: #814314; }
+.batch-result details { margin-top: 6px; font-size: .92rem; }
+.batch-result ul { max-height: 180px; overflow: auto; margin: 6px 0 0; padding-left: 20px; }
+
+/* Aba Pagamento */
+.payment-options { display: grid; gap: 6px; }
+.payment-option { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 14px; padding: 8px 12px; border: 1px solid #e0e4ea; border-left: 4px solid #efb1b1; border-radius: 6px; background: var(--white); }
+.payment-option.is-ok { border-left-color: var(--leaf); background: #f3faf5; }
+.payment-option-label { display: flex; align-items: center; gap: 10px; font-weight: 800; cursor: pointer; }
+.payment-option-label input { width: 20px; height: 20px; accent-color: var(--leaf-dark); }
+.payment-option-state { min-width: 82px; font-size: .82rem; font-weight: 800; color: #a3242a; text-align: right; }
+.payment-option.is-ok .payment-option-state { color: var(--leaf-dark); }
+.payment-add { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.payment-add .field { flex: 1 1 220px; }
