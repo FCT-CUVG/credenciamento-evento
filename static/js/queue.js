@@ -82,7 +82,7 @@ function actionButton(label, className, onClick) {
   return button;
 }
 
-function queueCard(item, refresh) {
+function queueCard(item, refresh, position) {
   const {role, username} = session.user;
   const volunteer = mode === 'volunteer';
   const attendantReady = mode === 'attendant' && item.status === 'ready';
@@ -107,7 +107,20 @@ function queueCard(item, refresh) {
   if (!split && !showCpf) meta.append(el('span', 'guiche', 'Guichê ' + item.guiche));
   if (item.claimed_by && item.status !== 'completed') meta.append(el('span', 'muted', item.claimed_by));
   // Na separação, a fila segue a ordem de chegada (prioridade primeiro): o horário ajuda a conferir.
-  if (item.status === 'prechecked' && item.prechecked_at) meta.append(el('span', 'muted arrival', 'Chegou às ' + clockTime(item.prechecked_at).slice(0, 5)));
+  // Separação: posição na fila (ordem de chegada, prioritários primeiro) no canto superior
+  // esquerdo e a hora de chegada no canto inferior esquerdo.
+  if (volunteer && item.status === 'prechecked' && position) {
+    card.classList.add('has-position');
+    const place = el('span', 'queue-position', String(position));
+    place.title = `${position}º na fila`;
+    content.append(place);
+    if (item.prechecked_at) {
+      const time = el('time', 'queue-arrival', clockTime(item.prechecked_at).slice(0, 5));
+      time.dateTime = item.prechecked_at;
+      time.title = 'Chegou às ' + time.textContent;
+      content.append(time);
+    }
+  }
   if (item.status === 'completed' && item.completed_at) {
     const time = new Date(item.completed_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
     meta.append(el('span', 'muted', 'Retirado às ' + time));
@@ -157,6 +170,8 @@ function queueCard(item, refresh) {
 const emptyText = {ready: 'Ninguém aguardando retirada.', completed: 'Nenhuma retirada confirmada.'};
 
 function renderQueue(refresh) {
+  // A posição vem da fila inteira (o servidor já ordena), mesmo com filtro digitado.
+  const positions = new Map(items.filter(item => item.status === 'prechecked').map((item, index) => [item.id, index + 1]));
   const filter = searchKey($('queue-filter').value).split(/\s+/).filter(Boolean);
   const statuses = mode === 'attendant' ? ['ready', 'completed'] : ['prechecked', 'searching', 'ready'];
   for (const status of statuses) {
@@ -168,7 +183,7 @@ function renderQueue(refresh) {
         .includes(word))));
     $('count-' + status).textContent = `(${rows.length})`;
     if (!rows.length) list.append(el('div', 'empty', emptyText[status] || 'Nenhum participante nesta etapa.'));
-    else rows.forEach(item => list.append(queueCard(item, refresh)));
+    else rows.forEach(item => list.append(queueCard(item, refresh, positions.get(item.id))));
   }
 }
 
