@@ -37,8 +37,11 @@ def queue_action_fields(action, user, row):
     clear = not pending_reasons(row)
     # Pedido de separação feito no guichê para quem não fez o pré-check-in: registra a chegada.
     # Com pendência, a chegada fica registrada, mas a pessoa só entra na fila depois de resolvida.
+    # Quem já chegou e ainda espera a busca pode só trocar de guichê (ver web/staff.py).
     if action == "request" and staff and row["status"] == "registered":
         return {"status": "prechecked", "prechecked_at": stamp}
+    if action == "request" and staff and row["status"] == "prechecked":
+        return {}
     # Desfaz um pedido feito por engano, enquanto ninguém assumiu a busca.
     if action == "undo_request" and staff and row["status"] == "prechecked":
         return {"status": "registered", "prechecked_at": None}

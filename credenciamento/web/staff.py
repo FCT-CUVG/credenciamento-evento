@@ -6,7 +6,7 @@ from ..auth import end_session
 from ..common import normalize
 from ..csv_io import export_csv
 from ..db import connect, get_participant, participant_dict, pending_reasons, update_participant
-from ..desks import available_guiches, priority_guiche
+from ..desks import auto_guiche, available_guiches, priority_guiche
 from ..lookup import cpf_key, email_key
 from ..participants import queue_action_fields
 from .routes import STAFF, route
@@ -92,6 +92,21 @@ def logout(req, user, data):
     return req.respond(200, {"ok": True}, {"Set-Cookie": "session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"})
 
 
+def desk_fields(db, row, fields, desk):
+    """No pedido de separação, a pessoa passa a ser atendida no guichê onde está esperando (o da
+    tela de quem pediu); desfazer devolve o guichê anterior. Sem guichê, mantém o atual.
+    Devolve os campos, None se não há o que mudar, ou o texto do erro."""
+    if not desk or desk == row["guiche"]:
+        return fields or None
+    if desk not in {item["id"] for item in available_guiches(db)}:
+        return "Guichê inválido."
+    try:
+        manual = int(desk != auto_guiche(row["name"], row["priority"]))
+    except ValueError:
+        manual = 1
+    return dict(fields, guiche=desk, guiche_manual=manual)
+
+
 @route("POST", "/api/action/", roles=STAFF, prefix=True)
 def queue_action(req, user, data):
     action = req.api_path.removeprefix("/api/action/")
@@ -104,8 +119,12 @@ def queue_action(req, user, data):
         if not row:
             return req.respond(404, {"error": "Participante não encontrado."})
         fields = queue_action_fields(action, user, row)
+        if fields is not None and action in ("request", "undo_request"):
+            fields = desk_fields(db, row, fields, str(data.get("guiche", "")).strip())
         if fields is None:
             return req.respond(409, {"error": "Esta ação não é permitida no estado atual. Atualize a fila."})
+        if isinstance(fields, str):
+            return req.respond(400, {"error": fields})
         row = update_participant(db, pid, action, user["username"], **fields)
         db.commit()
     export_csv()

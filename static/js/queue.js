@@ -18,7 +18,7 @@ function ask(action, item) {
     request: item.pending
       ? `A inscrição de ${item.name} tem uma pendência. A chegada será registrada, mas o material só será ` +
         'separado depois que a coordenação resolver. Oriente a pessoa a procurar a coordenação.'
-      : `A chegada de ${item.name} será registrada e o pedido vai para a separação (guichê ${item.guiche}).`,
+      : `A chegada de ${item.name} será registrada e o pedido vai para a separação (guichê ${targetDesk(item)}).`,
     ready: `Confirme que o crachá e o kit de ${item.name} já estão no guichê ${item.guiche}.`,
     complete: `Confirme que ${item.name} recebeu o crachá e o kit no guichê ${item.guiche}.`,
     undo_ready: `${item.name} sairá dos prontos no guichê ${item.guiche} e voltará para ` +
@@ -45,7 +45,7 @@ function initDialog(refresh) {
     button.disabled = true;
     try {
       const {action, item} = pendingAction;
-      await api('/api/action/' + action, {id: item.id});
+      await api('/api/action/' + action, action === 'request' ? {id: item.id, guiche: desk} : {id: item.id});
       $('confirm-dialog').close();
       await refresh();
       if (action === 'request') {
@@ -106,6 +106,8 @@ function queueCard(item, refresh) {
   // Depois da retirada, o CPF não é mais necessário; em "Todos os guichês" o guichê continua visível.
   if (!split && !showCpf) meta.append(el('span', 'guiche', 'Guichê ' + item.guiche));
   if (item.claimed_by && item.status !== 'completed') meta.append(el('span', 'muted', item.claimed_by));
+  // Na separação, a fila segue a ordem de chegada (prioridade primeiro): o horário ajuda a conferir.
+  if (item.status === 'prechecked' && item.prechecked_at) meta.append(el('span', 'muted arrival', 'Chegou às ' + clockTime(item.prechecked_at).slice(0, 5)));
   if (item.status === 'completed' && item.completed_at) {
     const time = new Date(item.completed_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
     meta.append(el('span', 'muted', 'Retirado às ' + time));
@@ -195,19 +197,31 @@ function showNotice(text, undo) {
 
 // Enter (ou o botão) manda direto para a separação. Com pendência, confirma antes: a pessoa
 // não entra na fila até a coordenação resolver.
+// A pessoa passa a ser atendida no guichê da tela, onde ela está esperando ("Todos os guichês"
+// mantém o guichê dela).
+const targetDesk = item => desk || item.guiche;
+// Quem já chegou, mas ainda espera a busca em outro guichê, pode ser trazido para este.
+const canMoveHere = item => item.status === 'prechecked' && desk && item.guiche !== desk;
+
 async function sendToSeparation(item, refresh) {
-  if (item.pending) {
+  if (item.pending && item.status === 'registered') {
     ask('request', item);
     return;
   }
+  const moved = targetDesk(item) !== item.guiche;
   try {
-    await api('/api/action/request', {id: item.id});
+    await api('/api/action/request', {id: item.id, guiche: desk});
     await refresh();
-    showNotice(`${item.name} foi para a separação (guichê ${item.guiche}).`, async () => {
+    const text = item.status === 'registered'
+      ? `${item.name} foi para a separação no guichê ${targetDesk(item)}${moved ? ` (era o ${item.guiche})` : ''}.`
+      : `${item.name} passou do guichê ${item.guiche} para o guichê ${targetDesk(item)}.`;
+    showNotice(text, async () => {
       try {
-        await api('/api/action/undo_request', {id: item.id});
+        // Desfazer devolve a situação e o guichê anteriores.
+        await api(item.status === 'registered' ? '/api/action/undo_request' : '/api/action/request',
+          {id: item.id, guiche: item.guiche});
         await refresh();
-        showNotice(`Pedido de separação de ${item.name} desfeito.`);
+        showNotice(`Pedido de ${item.name} desfeito.`);
       } catch (err) {
         showNotice(`Não foi possível desfazer: ${err.message}`);
       }
@@ -238,6 +252,8 @@ function resultRow(item, index, refresh) {
   if (item.status === 'registered') {
     action.append(actionButton(item.pending ? 'Registrar chegada' : 'Solicitar separação',
       'button small' + (item.pending ? ' warning' : ''), () => sendToSeparation(item, refresh)));
+  } else if (canMoveHere(item)) {
+    action.append(actionButton('Trazer para este guichê', 'button small', () => sendToSeparation(item, refresh)));
   }
   row.append(main, facts, action);
   row.addEventListener('click', event => {
@@ -315,10 +331,11 @@ function initSearch(refresh) {
       event.preventDefault();
       const item = searchResults[activeResult];
       if (!item) return;
-      if (item.status === 'registered') sendToSeparation(item, refresh);
-      else showNotice(`${item.name}: ${item.status === 'completed' ? 'já credenciado'
-        : item.status === 'ready' ? 'material já pronto no guichê ' + item.guiche
-        : 'já está na separação'}. Não há o que solicitar.`);
+      if (item.status === 'registered' || canMoveHere(item)) sendToSeparation(item, refresh);
+      else showNotice(`${item.name}: ${item.status === 'completed' ? 'já credenciado.'
+        : item.status === 'ready' ? `material já pronto no guichê ${item.guiche}. Encaminhe a pessoa para lá.`
+        : item.status === 'searching' ? `material já está sendo separado para o guichê ${item.guiche}. Encaminhe a pessoa para lá.`
+        : 'já está na separação deste guichê.'}`);
     }
   });
 }
