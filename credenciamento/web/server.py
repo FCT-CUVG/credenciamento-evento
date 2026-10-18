@@ -69,8 +69,11 @@ class App(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_csv(self, filename, body):
+        self.send_file(filename, body, "text/csv; charset=utf-8")
+
+    def send_file(self, filename, body, content_type):
         self.send_response(200)
-        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Cache-Control", "no-store")
         self.security_headers()
