@@ -1,4 +1,4 @@
-"""Linha de comando: serve, import, user, revoke, public-checkin, sync e backup."""
+"""Linha de comando: serve, import, user, revoke, public-checkin, sync, backup e credenciados."""
 import argparse
 import secrets
 import signal
@@ -14,6 +14,7 @@ from .desks import attendant_desk
 from .event_theme import event_config
 from .lookup import lookup_ready
 from .participants import public_checkin_state, set_public_checkin
+from .report import credentialed_report
 from .sheets import sync_sheets_once, sync_worker
 from .web.server import App
 
@@ -42,6 +43,10 @@ def main():
     sub.add_parser("sync")
     backup = sub.add_parser("backup")
     backup.add_argument("file")
+    report = sub.add_parser("credenciados", help="lista original de inscrição com quem foi credenciado, por quem e quando")
+    report.add_argument("lista", help="lista original (CSV ou JSON) com nome, email e cpf")
+    report.add_argument("saida", help="arquivo CSV a gerar")
+    report.add_argument("--backup", help="backup .json do painel; sem ele, usa o banco atual")
     args = parser.parse_args()
     try:
         init_db()
@@ -91,6 +96,14 @@ def main():
         print(f"{sync_sheets_once()} eventos sincronizados.")
     elif args.command == "backup":
         backup_file(args.file)
+    elif args.command == "credenciados":
+        if not lookup_ready():
+            parser.error("Defina CHECKIN_LOOKUP_SECRET com pelo menos 32 caracteres.")
+        try:
+            total, done, missing = credentialed_report(args.lista, args.saida, args.backup)
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
+        print(f"{total} pessoas na lista; {done} credenciadas; {missing} não encontradas. Arquivo: {args.saida}")
     elif args.command == "serve":
         if len(settings.SECRET) < 32:
             parser.error("Defina CHECKIN_SESSION_SECRET com pelo menos 32 caracteres.")

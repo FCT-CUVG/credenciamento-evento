@@ -381,6 +381,17 @@ Um banco criado por uma versão anterior, que guardava CPF e e-mail em texto, é
 
 Para criar uma cópia consistente do banco enquanto o serviço está em uso, execute `python3 app.py backup /caminho/seguro/backup-AAAA-MM-DD.sqlite3`. O comando não substitui um backup existente. Guarde cópias fora do servidor do evento.
 
+### Lista de credenciados com CPF
+
+Como o banco e o backup não têm CPF nem e-mail, a lista de quem foi credenciado com esses dados sai do cruzamento com a lista original de inscrição:
+
+```bash
+python3 app.py credenciados lista-original.csv credenciados.csv                      # banco atual
+python3 app.py credenciados lista-original.csv credenciados.csv --backup backup.json # backup do painel
+```
+
+O arquivo gerado é a lista original (CSV ou JSON, com as colunas `nome`, `email` e, de preferência, `cpf`), linha por linha e com o mesmo separador, mais as colunas `credenciado` (`sim`, `não` ou `não encontrado`), `credenciado_em`, `credenciado_por` (quem confirmou a retirada), `buscado_por`, `guiche` e `situacao`. Cada linha é procurada por nome e e-mail, depois pelo CPF e, por fim, pelo e-mail quando só uma pessoa o usa. O cruzamento usa a `CHECKIN_LOOKUP_SECRET` deste servidor: um backup feito com outra chave é recusado. O arquivo gerado tem CPF e e-mail em texto; guarde-o com o mesmo cuidado da lista original.
+
 O sistema guarda os eventos pendentes em `sheet_outbox` no mesmo banco até o Google Sheets confirmar o lote. Se o serviço ficar fora do ar, a fila de sincronização continua guardada e será tentada novamente a cada 15 segundos. Rode `python3 app.py sync` para forçar uma tentativa. O painel mostra quantas alterações aguardam envio.
 
 ## Segurança e dados pessoais
@@ -458,6 +469,7 @@ Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `te
 | `web/server.py` | Servidor HTTP, páginas estáticas e despacho da API (login, CSRF e papel checados num lugar só) |
 | `web/routes.py` | Tabela de rotas: cada rota declara método, caminho e papéis (`@route`) |
 | `web/public.py` / `staff.py` / `admin.py` | Rotas públicas, da equipe e da coordenação |
-| `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `revoke`, `public-checkin`, `sync`, `backup` |
+| `report.py` | Lista original de inscrição com a situação de credenciamento de cada pessoa |
+| `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `revoke`, `public-checkin`, `sync`, `backup`, `credenciados` |
 
 No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js`, `dashboard/tools.js` e `dashboard/theme.js` (painel detalhado e identidade visual) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.
