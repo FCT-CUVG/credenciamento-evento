@@ -232,7 +232,28 @@ body[data-page="volunteer"] main, body[data-page="attendant"] main, body[data-pa
 .dashboard-shortcuts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 10px 0 0; }
 .dashboard-shortcuts a { color: var(--navy-header); font-size: .9rem; font-weight: 750; text-underline-offset: 3px; }
 .dashboard-shortcuts a:hover { color: var(--leaf-dark); }
-.dashboard-tools { display: grid; grid-template-columns: minmax(280px, .85fr) minmax(360px, 1.15fr); gap: 16px; align-items: start; margin: 20px 0 28px; }
+/* Blocos do painel detalhado, em uma coluna e na ordem salva pela coordenação (ver dashboard/layout.js).
+   O script tira os cartões de .dashboard-tools, que fica só como marcação. */
+.dashboard-tools { display: contents; }
+main > .dashboard-block { margin: 0 0 18px; }
+.dashboard-block > .checkin-control { margin: 0; }
+.dashboard-block > .toolbar { margin-top: 0; }
+.dashboard-block > #sync-status { margin-top: 0; }
+.layout-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: -12px 0 18px; }
+.layout-bar .layout-help { flex-basis: 100%; margin: 0; color: var(--navy); font-weight: 700; }
+.layout-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.layout-bar #layout-status { margin: 0; font-size: .9rem; }
+.layout-editing main > .dashboard-block { outline: 2px dashed #9aa3c4; outline-offset: 6px; }
+.layout-editing main > .dashboard-block.is-dragging { opacity: .45; }
+.block-handle { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; background: #e9eff2; color: var(--navy); cursor: grab; user-select: none; }
+.block-handle:active { cursor: grabbing; }
+.block-grip { font-size: 1.3rem; line-height: 1; }
+.block-title { flex: 1; font-size: .9rem; }
+.block-handle { grid-column: 1 / -1; }
+.block-handle .button.secondary { background: var(--white); }
+.layout-bar [hidden] { display: none; }
+.block-handle .button.small { min-width: 44px; min-height: 38px; padding: 4px 10px; font-size: 1rem; }
+.layout-bar #layout-status.error { color: #814314; font-weight: 700; }
 .dashboard-tool { display: grid; align-content: start; gap: 14px; }
 .dashboard-tabs { display: grid; align-content: start; gap: 22px; }
 .tab-list { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid #e0e4ed; }
@@ -428,7 +449,6 @@ dialog .actions .button { flex: 1; }
 }
 
 /* Identidade visual no painel */
-.dashboard-tools:has(#theme-tools:not([hidden])) .dashboard-tabs { grid-column: 1 / -1; }
 .theme-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 24px; align-items: start; }
 .theme-form fieldset { margin: 0 0 18px; padding: 0; border: 0; display: grid; gap: 12px; }
 .theme-form legend { margin-bottom: 10px; color: var(--navy); font-size: .8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }

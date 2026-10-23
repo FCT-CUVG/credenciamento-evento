@@ -2,6 +2,7 @@
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
 import {initBackup} from './dashboard/backup.js';
 import {initBatch, renderBatch} from './dashboard/batch.js';
+import {initLayout} from './dashboard/layout.js';
 import {initPayment} from './dashboard/payment.js';
 import {fillCountryFilter, fillDeskFilter, fillPaymentFilter, renderDashboard, renderDashboardKeepingFocus,
   renderDeskStats, state} from './dashboard/table.js';
@@ -258,6 +259,7 @@ function initTableEvents() {
 await loadEventConfig();
 if (await requireSession(['admin'])) {
   initTabs();
+  initLayout();
   initFilters();
   initTableEvents();
   initBatch(refresh);
