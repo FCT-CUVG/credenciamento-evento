@@ -1,10 +1,14 @@
 // Painel detalhado da coordenação: números, tabela de participantes e ferramentas.
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
-import {fillDeskFilter, renderDashboard, renderDashboardKeepingFocus, renderDeskStats, state} from './dashboard/table.js';
+import {initBackup} from './dashboard/backup.js';
+import {initBatch, renderBatch} from './dashboard/batch.js';
+import {initPayment} from './dashboard/payment.js';
+import {fillCountryFilter, fillDeskFilter, fillPaymentFilter, renderDashboard, renderDashboardKeepingFocus,
+  renderDeskStats, state} from './dashboard/table.js';
 import {initTheme} from './dashboard/theme.js';
 import {initTabs, initTools} from './dashboard/tools.js';
 
-const FILTERS = ['status-filter', 'priority-filter', 'payment-filter', 'desk-filter'];
+const FILTERS = ['status-filter', 'priority-filter', 'payment-filter', 'country-filter', 'desk-filter'];
 
 function syncText(data) {
   if (!data.sheet_configured) return 'Google Sheets ainda não configurado; as alterações estão guardadas localmente.';
@@ -50,6 +54,11 @@ async function refresh() {
   try {
     const data = await api('/api/dashboard');
     state.items = data.items;
+    state.paymentOptions = data.payment_options;
+    state.desks = data.desks;
+    // A seleção do lote só guarda quem ainda existe.
+    const ids = new Set(data.items.map(item => item.id));
+    for (const id of state.selected) if (!ids.has(id)) state.selected.delete(id);
     const {counts} = data;
     $('stat-total').textContent = data.total;
     $('stat-prechecked').textContent = counts.prechecked + counts.searching + counts.ready + counts.completed;
@@ -60,9 +69,12 @@ async function refresh() {
     renderDeskStats(data.desks, data.registration_pending);
     renderCheckin(data.public_checkin, data.search_misses);
     fillDeskFilter(data.desks);
+    fillPaymentFilter();
+    fillCountryFilter();
     $('sync-status').textContent = `Atualizado às ${clockTime()} · ${syncText(data)}`;
     $('app-version').textContent = `Versão do sistema: ${data.version.label}`;
     renderDashboardKeepingFocus();
+    renderBatch();
     message('page-error', '');
   } catch (err) {
     message('page-error', err.message);
@@ -73,6 +85,7 @@ async function refresh() {
 function firstPage() {
   state.page = 1;
   renderDashboard();
+  renderBatch();
 }
 
 // O painel não recebe CPF nem e-mail; um CPF ou e-mail completo digitado na busca é conferido no servidor.
@@ -135,18 +148,18 @@ const findItem = id => state.items.find(candidate => candidate.id === id);
 async function changePayment(select) {
   const item = findItem(select.dataset.participantId);
   if (!item) return;
-  const paid = select.value === '1';
+  const status = select.value;
   // Tira o foco do seletor para a atualização automática voltar a redesenhar a tabela.
   select.blur();
-  if (!confirm(`Marcar ${item.name} como ${paid ? 'pago' : 'não pago'}?`)) {
-    select.value = item.paid ? '1' : '0';
+  if (!confirm(`Mudar o pagamento de ${item.name} para “${status}”?`)) {
+    select.value = item.payment_status;
     return;
   }
   try {
-    await api('/api/participants/payment', {id: item.id, paid: paid ? 1 : 0});
+    await api('/api/participants/payment', {id: item.id, payment_status: status});
     await refresh();
   } catch (err) {
-    select.value = item.paid ? '1' : '0';
+    select.value = item.payment_status;
     message('page-error', err.message);
   }
 }
@@ -248,7 +261,9 @@ if (await requireSession(['admin'])) {
   initTabs();
   initFilters();
   initTableEvents();
+  initBatch(refresh);
+  initBackup(refresh);
   $('checkin-toggle').addEventListener('click', toggleCheckin);
-  await Promise.all([refresh(), initTools(refresh), initTheme()]);
+  await Promise.all([refresh(), initTools(refresh), initTheme(), initPayment(refresh)]);
   setInterval(refresh, 10000);
 }

@@ -206,5 +206,13 @@ class DesksTest(CredenciamentoTestCase):
                           placed["zeca@example.org"], placed["zilda@example.org"]), ("1", "2", "3", "P", "9"))
 
 
+    def test_attendant_account_must_use_an_existing_desk_name(self):
+        # Conta com guichê inexistente veria a fila vazia (ex.: "Prioridade" com o guichê "P").
+        with database.connect() as db:
+            self.assertEqual(desks.attendant_desk(db, "p"), "P")
+            self.assertEqual(desks.attendant_desk(db, " 3 "), "3")
+            with self.assertRaises(ValueError):
+                desks.attendant_desk(db, "Prioridade")
+
 if __name__ == "__main__":
     unittest.main()

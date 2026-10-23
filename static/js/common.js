@@ -85,7 +85,7 @@ export async function renderTeamNav() {
   const link = (label, href) => {
     const a = el('a', '', label);
     a.href = href;
-    if (location.pathname === href) a.setAttribute('aria-current', 'page');
+    if (location.pathname + location.search === href) a.setAttribute('aria-current', 'page');
     return a;
   };
   nav.append(link('Separação', '/busca'));
@@ -95,6 +95,11 @@ export async function renderTeamNav() {
   choices.append(link('Todos os guichês', '/fila?guiche=all'));
   try {
     const data = await api('/api/guiches');
+    // Com guichê de prioridade, uma opção junta só os guichês gerais (por letras).
+    if (data.guiches.some(desk => desk.priority)) {
+      choices.append(link('Guichês gerais (sem prioridade)', '/fila?guiche=all&exclude=priority'));
+    }
+    choices.append(el('hr', 'guiche-separator'));
     for (const desk of data.guiches) {
       const detail = desk.priority ? (/priorid/i.test(desk.id) ? '' : ' · Prioridade')
         : desk.ranges.length ? ' · ' + desk.ranges.join(', ') : '';
@@ -104,6 +109,9 @@ export async function renderTeamNav() {
     message('page-error', err.message);
   }
   menu.append(choices);
+  // Fecha o menu ao clicar fora dele ou com Esc.
+  document.addEventListener('click', event => { if (!menu.contains(event.target)) menu.open = false; });
+  menu.addEventListener('keydown', event => { if (event.key === 'Escape') menu.open = false; });
   nav.append(menu, link('Painel resumido', '/painel/resumo'));
   if (session.user.role === 'admin') nav.append(link('Painel detalhado', '/painel'));
 }

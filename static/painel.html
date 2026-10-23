@@ -88,8 +88,11 @@
         <label class="filter">Pagamento
           <select id="payment-filter" class="filter-select">
             <option value="">Todos</option>
-            <option value="1">Pago</option>
-            <option value="0">Não pago</option>
+          </select>
+        </label>
+        <label class="filter">País
+          <select id="country-filter" class="filter-select">
+            <option value="">Todos</option>
           </select>
         </label>
         <label class="filter">Guichê
@@ -106,8 +109,31 @@
       <a class="button secondary small" href="/api/events/export" download="logs-movimentacoes.csv">Exportar logs de movimentações</a>
     </div>
     <p id="page-error" class="alert hidden" role="alert"></p>
+    <section id="batch-bar" class="batch-bar" aria-label="Alteração em lote">
+      <div class="batch-selection">
+        <strong id="batch-count">Nenhum participante selecionado</strong>
+        <button id="batch-select-filtered" class="link-button" type="button">Selecionar todos os filtrados</button>
+        <button id="batch-clear" class="link-button" type="button" hidden>Limpar seleção</button>
+      </div>
+      <div class="batch-form">
+        <label class="filter">Alterar
+          <select id="batch-field" class="filter-select">
+            <option value="">Escolha…</option>
+            <option value="payment">Pagamento</option>
+            <option value="status">Situação do credenciamento</option>
+            <option value="guiche">Guichê</option>
+            <option value="priority">Prioridade</option>
+          </select>
+        </label>
+        <label class="filter">Para
+          <select id="batch-value" class="filter-select" disabled><option value="">—</option></select>
+        </label>
+        <button id="batch-apply" class="button small" type="button" disabled>Aplicar aos selecionados</button>
+      </div>
+      <div id="batch-result" class="batch-result" role="status"></div>
+    </section>
     <div class="table-wrap"><table>
-      <thead><tr><th>Participante</th><th>Nome no crachá</th><th>Afiliação</th><th>Pagamento</th><th>Prioridade</th><th>Guichê</th><th>Situação</th><th>Última movimentação</th></tr></thead>
+      <thead><tr><th class="select-cell"><input type="checkbox" id="select-page" aria-label="Selecionar os participantes desta página"></th><th>Participante</th><th>Nome no crachá</th><th>Afiliação</th><th>País</th><th>Pagamento</th><th>Prioridade</th><th>Guichê</th><th>Situação</th><th>Última movimentação</th></tr></thead>
       <tbody id="dashboard-body"></tbody>
     </table></div>
     <nav class="pagination" aria-label="Paginação da lista de participantes">
@@ -132,6 +158,8 @@
       <div class="tab-list" role="tablist" aria-label="Configurações do credenciamento">
         <button class="tab" id="participants-tools-title" type="button" role="tab" aria-selected="true" aria-controls="participants-tools">Participantes</button>
         <button class="tab" id="guiches-tools-title" type="button" role="tab" aria-selected="false" aria-controls="guiches-tools" tabindex="-1">Configuração dos guichês</button>
+        <button class="tab" id="payment-tools-title" type="button" role="tab" aria-selected="false" aria-controls="payment-tools" tabindex="-1">Pagamento</button>
+        <button class="tab" id="backup-tools-title" type="button" role="tab" aria-selected="false" aria-controls="backup-tools" tabindex="-1">Backup e limpeza</button>
         <button class="tab" id="theme-tools-title" type="button" role="tab" aria-selected="false" aria-controls="theme-tools" tabindex="-1">Identidade visual</button>
       </div>
       <section class="dashboard-tool" id="participants-tools" role="tabpanel" aria-labelledby="participants-tools-title">
@@ -147,7 +175,8 @@
             <li><code>email</code> - obrigatório, texto</li>
             <li><code>cpf</code> - opcional, 11 dígitos ou <code>xxx.xxx.xxx-xx</code> quando preenchido</li>
             <li>CPF e e-mail não ficam guardados: o sistema guarda só uma chave para reconhecê-los na busca e os 3 primeiros dígitos do CPF para conferência no guichê. Guarde a lista original fora do sistema. O CSV exportado traz as chaves (<code>email_hash</code>, <code>cpf_hash</code>, <code>cpf_inicio</code>) e pode ser reimportado no lugar de <code>email</code> e <code>cpf</code>.</li>
-            <li><code>pago</code> - opcional, <code>0</code> para não ou <code>1</code> para sim</li>
+            <li><code>pais</code> - opcional, texto; arquivos sem esta coluna mantêm o país já cadastrado</li>
+            <li><code>pago</code> - opcional, situação do pagamento em texto (ex.: <code>Pago</code>, <code>Isento</code>, <code>Boleto pendente</code>); <code>1</code> e <code>0</code> valem <code>Pago</code> e <code>Não pago</code>; vazio fica <code>Não informado</code>. Quais situações liberam o credenciamento é definido na aba <strong>Pagamento</strong>.</li>
             <li><code>prioridade</code> - opcional, <code>0</code> para não prioridade ou <code>1</code> para prioridade; com <code>1</code>, a pessoa vai para o guichê de prioridade, mesmo que a coluna <code>guiche</code> esteja preenchida</li>
             <li><code>id</code> - opcional, usado para atualizar o mesmo participante ao reimportar dados exportados</li>
             <li><code>guiche</code> - opcional, definido automaticamente pela prioridade ou pelas faixas quando ausente</li>
@@ -178,6 +207,41 @@
           <button class="button small" id="save-ranges" type="button">Salvar guichês</button>
         </div>
         <p id="ranges-status" class="muted" role="status"></p>
+      </section>
+      <section class="dashboard-tool" id="payment-tools" role="tabpanel" aria-labelledby="payment-tools-title" hidden>
+        <p>As situações de pagamento vêm da coluna <code>pago</code> da importação (ex.: Pago, Isento, Boleto pendente). Marque as que <strong>liberam o credenciamento</strong>: quem está em outra situação chega com pendência e recebe orientação antes da busca do kit. Ao salvar, a regra vale na hora para todos.</p>
+        <div id="payment-options" class="payment-options"></div>
+        <form id="payment-add-form" class="payment-add">
+          <label class="field">Nova situação<input id="payment-new" maxlength="60" placeholder="Ex.: Isento"></label>
+          <button class="button secondary small" type="submit">Adicionar</button>
+        </form>
+        <div class="dashboard-tool-actions">
+          <button class="button small" id="payment-save" type="button">Salvar situações</button>
+        </div>
+        <p id="payment-status" class="muted" role="status"></p>
+      </section>
+      <section class="dashboard-tool" id="backup-tools" role="tabpanel" aria-labelledby="backup-tools-title" hidden>
+        <p>O backup é um arquivo com todos os participantes, com a situação de cada um (quem já foi credenciado, horários, quem buscou), e todo o histórico de movimentações. Contas da equipe e configurações (guichês, pagamento, identidade visual) não entram e não são apagadas.</p>
+        <div class="backup-block">
+          <h3>Baixar backup</h3>
+          <p class="muted">Guarde o arquivo em lugar seguro. Ele não tem CPF nem e-mail, só as chaves de busca deste servidor.</p>
+          <button class="button small" id="backup-download" type="button">Baixar backup agora</button>
+        </div>
+        <form class="backup-block" id="restore-form">
+          <h3>Restaurar backup</h3>
+          <p class="muted">Troca <strong>todos</strong> os participantes e o histórico atuais pelos do arquivo, inclusive quem já foi credenciado. O estado atual é guardado antes no servidor.</p>
+          <label class="field">Arquivo de backup (.json)<input id="restore-file" type="file" accept=".json,application/json" required></label>
+          <p id="restore-summary" class="muted"></p>
+          <label class="field">Digite RESTAURAR para confirmar<input id="restore-confirm" autocomplete="off"></label>
+          <button class="button small" type="submit" disabled>Restaurar backup</button>
+        </form>
+        <div class="backup-block danger-zone">
+          <h3>Limpar participantes e histórico</h3>
+          <p class="muted">Apaga todos os participantes e o histórico de movimentações. Antes, o painel baixa o backup e guarda uma cópia no servidor. Contas da equipe e configurações continuam.</p>
+          <label class="field">Digite LIMPAR para confirmar<input id="clear-confirm" autocomplete="off"></label>
+          <button class="button small danger" id="clear-participants" type="button" disabled>Baixar backup e limpar</button>
+        </div>
+        <p id="backup-status" class="muted" role="status"></p>
       </section>
       <section class="dashboard-tool" id="theme-tools" role="tabpanel" aria-labelledby="theme-tools-title" hidden>
         <p>Nome, cores e logo do evento em todas as páginas, inclusive a pública. As mudanças valem na hora para quem abrir ou recarregar uma página. <span id="theme-origin" class="muted"></span></p>
