@@ -13,6 +13,7 @@ from .common import normalize, now
 from .db import connect, get_participant, record_event, update_participant
 from .desks import configured_ranges, guiche_for, priority_guiche
 from .lookup import cpf_digits, cpf_key, email_key, is_key
+from .payments import clean_status, is_ok, ok_statuses
 
 CSV_LOCK = threading.Lock()
 
@@ -29,7 +30,8 @@ def export_csv():
     """The local CSV is a restart-rebuilt mirror; SQLite remains the source of truth."""
     with CSV_LOCK, connect() as db:
         rows = db.execute("SELECT * FROM participants ORDER BY name_key").fetchall()
-        fields = ["id", "name", "badge_name", "cpf_prefix", "affiliation", "paid", "priority", "guiche", "status",
+        fields = ["id", "name", "badge_name", "cpf_prefix", "affiliation", "country", "payment_status", "paid",
+                  "priority", "guiche", "status",
                   "claimed_by", "prechecked_at", "claimed_at", "ready_at", "completed_at",
                   "updated_at", "revision"]
         temp = settings.CSV.with_suffix(".csv.tmp")
@@ -44,14 +46,14 @@ def export_csv():
         os.replace(temp, settings.CSV)
 
 # A exportação não tem CPF nem e-mail, só as chaves de busca: reimportada, mantém as mesmas pessoas.
-PARTICIPANT_COLUMNS = ("id", "nome", "nome_cracha", "afiliacao", "email_hash", "cpf_hash", "cpf_inicio",
+PARTICIPANT_COLUMNS = ("id", "nome", "nome_cracha", "afiliacao", "pais", "email_hash", "cpf_hash", "cpf_inicio",
                        "pago", "prioridade", "guiche")
 
 PARTICIPANT_EXPORT_COLUMNS = PARTICIPANT_COLUMNS + ("situacao", "responsavel", "pre_checkin_em",
                                                       "busca_iniciada_em", "pronto_em", "retirado_em",
                                                       "atualizado_em", "revisao")
 
-PARTICIPANT_TEMPLATE_COLUMNS = ("nome", "nome_cracha", "afiliacao", "email", "cpf", "pago", "prioridade")
+PARTICIPANT_TEMPLATE_COLUMNS = ("nome", "nome_cracha", "afiliacao", "pais", "email", "cpf", "pago", "prioridade")
 
 EVENT_LOG_COLUMNS = ("evento_id", "participante_id", "nome", "nome_cracha", "guiche",
                      "acao", "responsavel", "data_hora")
@@ -66,9 +68,9 @@ def participants_download():
     writer.writeheader()
     for row in rows:
         values = {"id": row["id"], "nome": row["name"], "nome_cracha": row["badge_name"],
-                  "afiliacao": row["affiliation"], "email_hash": row["email_key"],
+                  "afiliacao": row["affiliation"], "pais": row["country"], "email_hash": row["email_key"],
                   "cpf_hash": row["cpf_key"], "cpf_inicio": row["cpf_prefix"],
-                  "pago": row["paid"], "prioridade": row["priority"], "guiche": row["guiche"],
+                  "pago": row["payment_status"], "prioridade": row["priority"], "guiche": row["guiche"],
                   "situacao": row["status"], "responsavel": row["claimed_by"],
                   "pre_checkin_em": row["prechecked_at"], "busca_iniciada_em": row["claimed_at"],
                   "pronto_em": row["ready_at"], "retirado_em": row["completed_at"],
@@ -82,7 +84,8 @@ def participants_template_download():
     writer = csv.DictWriter(output, fieldnames=PARTICIPANT_TEMPLATE_COLUMNS)
     writer.writeheader()
     writer.writerow({"nome": "Maria da Silva", "nome_cracha": "Maria", "afiliacao": "Universidade Exemplo",
-                     "email": "maria@example.org", "cpf": "12345678901", "pago": "1", "prioridade": "0"})
+                     "pais": "Brasil", "email": "maria@example.org", "cpf": "12345678901", "pago": "Pago",
+                     "prioridade": "0"})
     return b"\xef\xbb\xbf" + output.getvalue().encode("utf-8")
 
 
@@ -139,6 +142,8 @@ def import_text(content, suffix, actor="system"):
     prepared = []
     seen, seen_ids = set(), set()
     priority_desk = priority_guiche()
+    with connect() as db:
+        ok = ok_statuses(db)
     try:
         ranges = configured_ranges()
     except ValueError:
@@ -188,12 +193,20 @@ def import_text(content, suffix, actor="system"):
                 raise ValueError(f"Linha {n}: cpf_hash ou cpf_inicio inválido.")
         else:
             id_key, cpf_prefix = "", ""
-        paid_raw, priority_raw = value("pago"), value("prioridade")
-        if paid_raw not in ("", "0", "1"):
-            raise ValueError(f"Linha {n}: pago deve ser 0 ou 1.")
+        priority_raw, country = value("prioridade"), " ".join(value("pais").split())
+        # pago: situação em texto (ex.: Pago, Isento, Boleto pendente); 1 e 0 valem Pago e Não pago.
+        try:
+            payment_status = clean_status(value("pago"))
+        except ValueError as exc:
+            raise ValueError(f"Linha {n}: {exc}") from exc
         if priority_raw not in ("", "0", "1"):
             raise ValueError(f"Linha {n}: prioridade deve ser 0 ou 1.")
-        paid, priority = int(paid_raw or 0), int(priority_raw or 0)
+        if len(country) > 80:
+            raise ValueError(f"Linha {n}: pais com mais de 80 caracteres.")
+        # Arquivo sem a coluna pais (ex.: lista antiga) mantém o país já cadastrado.
+        if "pais" not in item:
+            country = None
+        paid, priority = int(is_ok(payment_status, ok)), int(priority_raw or 0)
         explicit = value("guiche")
         if priority and priority_desk:
             # Prioridade manda: quem credencia define a prioridade, e ela vale mais que a coluna guiche.
@@ -213,37 +226,46 @@ def import_text(content, suffix, actor="system"):
         if key in seen:
             raise ValueError(f"Linha {n}: nome e e-mail duplicados.")
         seen.add(key)
-        prepared.append((pid, name, badge_name, key[0], key[1], id_key, cpf_prefix, affiliation, paid, priority,
-                         guiche, manual))
+        prepared.append((pid, name, badge_name, key[0], key[1], id_key, cpf_prefix, affiliation, country,
+                         payment_status, paid, priority, guiche, manual))
     count = 0
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        for pid, name, badge_name, name_key, mail_key, id_key, cpf_prefix, affiliation, paid, priority, guiche, manual in prepared:
+        for (pid, name, badge_name, name_key, mail_key, id_key, cpf_prefix, affiliation, country, payment_status,
+             paid, priority, guiche, manual) in prepared:
             old_by_id = get_participant(db, pid) if pid else None
             old_by_key = db.execute("SELECT * FROM participants WHERE name_key=? AND email_key=?",
                                     (name_key, mail_key)).fetchone()
             if old_by_id and old_by_key and old_by_id["id"] != old_by_key["id"]:
                 raise ValueError(f"{name}: id e nome/e-mail identificam pessoas diferentes.")
             old = old_by_id or old_by_key
+            if old and country is None:
+                country = old["country"]
             if old:
                 if any(old[k] != v for k, v in (("name", name), ("name_key", name_key),
                                                   ("badge_name", badge_name), ("email_key", mail_key),
                                                   ("cpf_key", id_key), ("cpf_prefix", cpf_prefix),
-                                                  ("affiliation", affiliation), ("paid", paid),
+                                                  ("affiliation", affiliation), ("country", country),
+                                                  ("payment_status", payment_status), ("paid", paid),
                                                   ("priority", priority), ("guiche", guiche))):
                     if old["guiche"] != guiche and old["status"] in ("searching", "ready", "completed"):
                         raise ValueError(f"Não é possível mudar o guichê de {name}: busca ou retirada já iniciada.")
                     update_participant(db, old["id"], "import_update", actor, name=name, name_key=name_key,
                                        badge_name=badge_name, email_key=mail_key, cpf_key=id_key,
                                        cpf_prefix=cpf_prefix,
-                                       affiliation=affiliation, paid=paid, priority=priority, guiche=guiche)
+                                       affiliation=affiliation, country=country, payment_status=payment_status,
+                                       paid=paid, priority=priority, guiche=guiche)
                     count += 1
                 if old["guiche_manual"] != manual:
                     db.execute("UPDATE participants SET guiche_manual=? WHERE id=?", (manual, old["id"]))
             else:
                 pid = pid or str(uuid.uuid4())
-                db.execute("INSERT INTO participants(id,name,badge_name,name_key,email_key,cpf_key,cpf_prefix,affiliation,paid,priority,guiche,guiche_manual,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (pid, name, badge_name, name_key, mail_key, id_key, cpf_prefix, affiliation, paid, priority, guiche, manual, now()))
+                country = country or ""
+                db.execute("INSERT INTO participants(id,name,badge_name,name_key,email_key,cpf_key,cpf_prefix,affiliation,"
+                           "country,payment_status,paid,priority,guiche,guiche_manual,updated_at) "
+                           "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (pid, name, badge_name, name_key, mail_key, id_key, cpf_prefix, affiliation, country,
+                            payment_status, paid, priority, guiche, manual, now()))
                 record_event(db, get_participant(db, pid), "import", actor)
                 count += 1
         db.commit()

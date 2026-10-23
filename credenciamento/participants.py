@@ -26,12 +26,25 @@ def status_fields(row, status, actor):
 
 
 def queue_action_fields(action, user, row):
-    """Campos de uma ação da fila (busca e guichê), ou None se ela não vale para este usuário agora."""
+    """Campos de uma ação da fila (busca e guichê), ou None se ela não vale para este usuário agora.
+
+    Voluntários e atendentes têm as mesmas permissões: separam kits e atendem em qualquer guichê
+    (inclusive o de prioridade). O guichê da conta do atendente só define a tela inicial."""
     role, username, stamp = user["role"], user["username"], now()
-    staff = role in ("volunteer", "admin")
+    staff = role in ("volunteer", "attendant", "admin")
     owns_search = row["claimed_by"] == username or role == "admin"
-    at_desk = staff or (role == "attendant" and user["guiche"] == row["guiche"])
+    at_desk = staff
     clear = not pending_reasons(row)
+    # Pedido de separação feito no guichê para quem não fez o pré-check-in: registra a chegada.
+    # Com pendência, a chegada fica registrada, mas a pessoa só entra na fila depois de resolvida.
+    # Quem já chegou e ainda espera a busca pode só trocar de guichê (ver web/staff.py).
+    if action == "request" and staff and row["status"] == "registered":
+        return {"status": "prechecked", "prechecked_at": stamp}
+    if action == "request" and staff and row["status"] == "prechecked":
+        return {}
+    # Desfaz um pedido feito por engano, enquanto ninguém assumiu a busca.
+    if action == "undo_request" and staff and row["status"] == "prechecked":
+        return {"status": "registered", "prechecked_at": None}
     if action == "claim" and staff and row["status"] == "prechecked" and clear:
         return {"status": "searching", "claimed_by": username, "claimed_at": stamp}
     if action == "ready" and staff and row["status"] == "searching" and clear and owns_search:

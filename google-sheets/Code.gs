@@ -9,7 +9,7 @@ function doPost(e) {
     lock.waitLock(30000);
     try {
       const book = SpreadsheetApp.getActiveSpreadsheet();
-      const people = getSheet(book, 'Participantes', ['ID', 'Nome', 'Nome no crachá', 'Início do CPF', 'Afiliação', 'Pago', 'Prioridade', 'Guichê', 'Estado', 'Responsável', 'Pré-check-in', 'Busca iniciada', 'Pronto no guichê', 'Retirado em', 'Atualizado em', 'Revisão']);
+      const people = getSheet(book, 'Participantes', ['ID', 'Nome', 'Nome no crachá', 'Início do CPF', 'Afiliação', 'Pago', 'Prioridade', 'Guichê', 'Estado', 'Responsável', 'Pré-check-in', 'Busca iniciada', 'Pronto no guichê', 'Retirado em', 'Atualizado em', 'Revisão', 'País', 'Situação do pagamento']);
       const history = getSheet(book, 'Histórico', ['ID do evento', 'ID do participante', 'Ação', 'Responsável', 'Data e hora']);
       const peopleRows = people.getLastRow() > 1 ? people.getRange(2, 1, people.getLastRow() - 1, 16).getValues() : [];
       const eventRows = history.getLastRow() > 1 ? history.getRange(2, 1, history.getLastRow() - 1, 1).getValues() : [];
@@ -20,7 +20,8 @@ function doPost(e) {
         if (!p || !event || !p.id || !event.id) throw new Error('Registro incompleto');
         const row = [p.id, safe(p.name), safe(p.badge_name || ''), safe(p.cpf_prefix || ''), safe(p.affiliation || ''),
           p.paid ? 1 : 0, p.priority ? 1 : 0, safe(p.guiche), p.status, safe(p.claimed_by || ''),
-          p.prechecked_at || '', p.claimed_at || '', p.ready_at || '', p.completed_at || '', p.updated_at, Number(p.revision)];
+          p.prechecked_at || '', p.claimed_at || '', p.ready_at || '', p.completed_at || '', p.updated_at, Number(p.revision),
+          safe(p.country || ''), safe(p.payment_status || '')];
         const at = personIndex.get(String(p.id));
         if (at) {
           const current = Number(people.getRange(at, 16).getValue()) || 0;

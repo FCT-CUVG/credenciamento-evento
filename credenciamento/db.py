@@ -35,7 +35,8 @@ def create_schema(db):
       id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL,
                 badge_name TEXT NOT NULL DEFAULT '', email_key TEXT NOT NULL,
                 cpf_key TEXT NOT NULL DEFAULT '', cpf_prefix TEXT NOT NULL DEFAULT '',
-                affiliation TEXT NOT NULL DEFAULT '',
+                affiliation TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '',
+                payment_status TEXT NOT NULL DEFAULT '',
                 paid INTEGER NOT NULL DEFAULT 0 CHECK(paid IN (0,1)),
                 priority INTEGER NOT NULL DEFAULT 0 CHECK(priority IN (0,1)), guiche TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'registered' CHECK(status IN
@@ -80,11 +81,16 @@ def create_schema(db):
         ("guiche_manual", "INTEGER NOT NULL DEFAULT 0 CHECK(guiche_manual IN (0,1))"),
         ("cpf_key", "TEXT NOT NULL DEFAULT ''"),
         ("cpf_prefix", "TEXT NOT NULL DEFAULT ''"),
+        ("country", "TEXT NOT NULL DEFAULT ''"),
+        ("payment_status", "TEXT NOT NULL DEFAULT ''"),
     ):
         if name not in columns:
             db.execute(f"ALTER TABLE participants ADD COLUMN {name} {definition}")
             added.add(name)
     db.execute("UPDATE participants SET badge_name=name WHERE badge_name='' ")
+    # Bancos de antes das situações de pagamento só sabiam pago (1) ou não (0).
+    db.execute("UPDATE participants SET payment_status=CASE paid WHEN 1 THEN 'Pago' ELSE 'Não pago' END "
+               "WHERE payment_status=''")
     if "cpf" in columns:
         remove_plaintext_identifiers(db)
         added.add("lookup_keys")
@@ -121,7 +127,8 @@ def participant_dict(row, private=False):
     d["priority"] = bool(row["priority"])
     d["cpf_prefix"] = row["cpf_prefix"]
     if private:
-        d.update(badge_name=row["badge_name"], paid=bool(row["paid"]), has_cpf=bool(row["cpf_key"]))
+        d.update(badge_name=row["badge_name"], paid=bool(row["paid"]), has_cpf=bool(row["cpf_key"]),
+                 payment_status=row["payment_status"], country=row["country"])
     return d
 
 

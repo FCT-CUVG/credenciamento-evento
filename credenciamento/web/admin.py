@@ -9,12 +9,18 @@ from .. import settings
 from ..auth import recent_count
 from ..csv_io import (event_logs_download, export_csv, import_text, participants_download,
                       participants_template_download)
+from ..dashboard_layout import dashboard_layout, save_dashboard_layout
 from ..db import connect, get_participant, participant_dict, pending_reasons, update_participant
-from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, configured_ranges, guiche_for,
-                     letter_counts, priority_guiche, save_ranges, validate_priority_guiche)
+from ..changes import ChangeError, participant_change
+from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, configured_ranges, letter_counts,
+                     priority_guiche, save_ranges, validate_priority_guiche)
 from ..event_theme import remove_logo, reset_theme, save_logo, save_theme, theme_settings
 from ..lookup import cpf_key, email_key
-from ..participants import STATUS_STEPS, public_checkin_state, set_public_checkin, status_fields
+from ..participants import public_checkin_state, set_public_checkin
+from ..payments import ok_statuses, payment_options, save_payment_config
+from ..snapshot import (backup_bytes, backup_filename, build_backup, clear_participants, restore_backup,
+                        save_server_copy)
+from ..version import current as current_version
 from .routes import ADMIN, route
 
 
@@ -25,6 +31,7 @@ def dashboard(req, user, data):
         pending = db.execute("SELECT COUNT(*) FROM sheet_outbox WHERE delivered_at IS NULL").fetchone()[0]
         desks = available_guiches(db)
         checkin = public_checkin_state(db)
+        payment_options_list = payment_options(db)
     alert_limit, alert_window = settings.rate_limit("alert_miss")
     for desk in desks:
         desk["total"] = sum(r["guiche"] == desk["id"] for r in rows)
@@ -41,6 +48,8 @@ def dashboard(req, user, data):
                               # Pagamento ou afiliação faltando em quem ainda não foi credenciado.
                               "registration_pending": sum(r["status"] != "completed" and bool(pending_reasons(r))
                                                           for r in rows),
+                              "payment_options": payment_options_list,
+                              "version": current_version(),
                               "items": [participant_dict(r, private=True) for r in rows]})
 
 
@@ -87,6 +96,22 @@ def default_logo(req, user, data):
 def default_theme(req, user, data):
     reset_theme(user["username"])
     return req.respond(200, theme_settings())
+
+
+@route("GET", "/api/dashboard/layout", roles=ADMIN)
+def layout(req, user, data):
+    with connect() as db:
+        return req.respond(200, dashboard_layout(db))
+
+
+@route("POST", "/api/dashboard/layout", roles=ADMIN, forbidden="Somente a coordenação pode organizar o painel.")
+def update_layout(req, user, data):
+    try:
+        with connect() as db:
+            saved = save_dashboard_layout(db, data.get("order"), user["username"])
+    except ValueError as exc:
+        return req.respond(400, {"error": str(exc)})
+    return req.respond(200, saved)
 
 
 @route("POST", "/api/participants/find", roles=ADMIN)
@@ -156,52 +181,107 @@ def import_participants(req, user, data):
     return req.respond(200, {"read": read, "changed": changed})
 
 
-@route("POST", "/api/participants/payment", roles=ADMIN, forbidden="Somente a coordenação pode alterar o pagamento.")
-def set_payment(req, user, data):
-    pid, paid = str(data.get("id", "")), str(data.get("paid", "")).strip()
-    if paid not in ("0", "1"):
-        return req.respond(400, {"error": "Pagamento inválido."})
+def apply_change(req, user, data, field, value):
+    """Alteração de uma pessoa pelo painel, com as mesmas regras da alteração em lote."""
+    pid = str(data.get("id", ""))
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = get_participant(db, pid)
         if not row:
             return req.respond(404, {"error": "Participante não encontrado."})
-        if row["paid"] != int(paid):
-            row = update_participant(db, pid, "payment_paid" if int(paid) else "payment_unpaid",
-                                     user["username"], paid=int(paid))
+        try:
+            change = participant_change(db, row, field, value, user["username"])
+        except ChangeError as exc:
+            status = 400 if "inválid" in str(exc) else 409
+            return req.respond(status, {"error": str(exc)})
+        if change:
+            action, fields = change
+            row = update_participant(db, pid, action, user["username"], **fields)
             db.commit()
-            export_csv()
+    if change:
+        export_csv()
     return req.respond(200, {"item": participant_dict(row, private=True)})
+
+
+@route("POST", "/api/participants/payment", roles=ADMIN, forbidden="Somente a coordenação pode alterar o pagamento.")
+def set_payment(req, user, data):
+    # Aceita a situação em texto ou, como antes, paid 0/1.
+    value = data.get("payment_status", data.get("paid", ""))
+    if str(value).strip() == "":
+        return req.respond(400, {"error": "Informe a situação do pagamento."})
+    return apply_change(req, user, data, "payment", value)
 
 
 @route("POST", "/api/participants/priority", roles=ADMIN, forbidden="Somente a coordenação pode alterar a prioridade.")
 def set_priority(req, user, data):
-    pid, priority = str(data.get("id", "")), str(data.get("priority", "")).strip()
-    if priority not in ("0", "1"):
-        return req.respond(400, {"error": "Prioridade inválida."})
-    priority = int(priority)
+    return apply_change(req, user, data, "priority", str(data.get("priority", "")).strip())
+
+
+@route("POST", "/api/participants/guiche", roles=ADMIN, forbidden="Somente a coordenação pode mudar o guichê.")
+def set_desk(req, user, data):
+    return apply_change(req, user, data, "guiche", data.get("guiche", ""))
+
+
+BATCH_FIELDS = ("payment", "status", "guiche", "priority")
+BATCH_LIMIT = 5000
+
+
+@route("POST", "/api/participants/batch", roles=ADMIN, max_body=400_000,
+       forbidden="Somente a coordenação pode alterar participantes em lote.")
+def batch_change(req, user, data):
+    """Mesma alteração para várias pessoas. Quem não pode mudar (ex.: busca já começou) fica
+    de fora com o motivo; as demais mudam juntas."""
+    ids, field, value = data.get("ids"), data.get("field"), data.get("value")
+    if field not in BATCH_FIELDS:
+        return req.respond(400, {"error": "Escolha o que alterar."})
+    if not isinstance(ids, list) or not ids or len(ids) > BATCH_LIMIT or not all(isinstance(i, str) for i in ids):
+        return req.respond(400, {"error": f"Selecione entre 1 e {BATCH_LIMIT} participantes."})
+    if value is None or str(value).strip() == "":
+        return req.respond(400, {"error": "Escolha o novo valor."})
+    updated, unchanged, skipped = 0, 0, []
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        row = get_participant(db, pid)
-        if not row:
-            return req.respond(404, {"error": "Participante não encontrado."})
-        desk, guiche = priority_guiche(), row["guiche"]
+        for pid in dict.fromkeys(ids):
+            row = get_participant(db, pid)
+            if not row:
+                skipped.append({"id": pid, "name": "", "reason": "Participante não encontrado."})
+                continue
+            try:
+                change = participant_change(db, row, field, value, user["username"])
+            except ChangeError as exc:
+                skipped.append({"id": pid, "name": row["name"], "reason": str(exc)})
+                continue
+            if not change:
+                unchanged += 1
+                continue
+            action, fields = change
+            update_participant(db, pid, action, user["username"], **fields)
+            updated += 1
+        db.commit()
+    if updated:
+        export_csv()
+    return req.respond(200, {"updated": updated, "unchanged": unchanged, "skipped": skipped})
+
+
+@route("GET", "/api/payment/config", roles=ADMIN)
+def payment_config(req, user, data):
+    with connect() as db:
+        return req.respond(200, {"options": payment_options(db), "ok": ok_statuses(db)})
+
+
+@route("POST", "/api/payment/config", roles=ADMIN, forbidden="Somente a coordenação pode configurar o pagamento.")
+def save_payment(req, user, data):
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
         try:
-            if priority and desk:
-                guiche = desk
-            elif not priority and guiche == desk:
-                guiche = guiche_for(row["name"])
+            changed = save_payment_config(db, data.get("ok"), data.get("options", []), user["username"])
         except ValueError as exc:
             return req.respond(400, {"error": str(exc)})
-        if guiche != row["guiche"] and row["status"] in ("searching", "ready", "completed"):
-            return req.respond(409, {"error": "Não é possível mudar o guichê: a busca ou a retirada do kit já começou."})
-        if row["priority"] != priority or row["guiche"] != guiche:
-            manual = 0 if priority and desk else row["guiche_manual"] if guiche == row["guiche"] else 0
-            row = update_participant(db, pid, "priority_on" if priority else "priority_off", user["username"],
-                                     priority=priority, guiche=guiche, guiche_manual=manual)
-            db.commit()
-            export_csv()
-    return req.respond(200, {"item": participant_dict(row, private=True)})
+        db.commit()
+        result = {"options": payment_options(db), "ok": ok_statuses(db), "updated": changed}
+    if changed:
+        export_csv()
+    return req.respond(200, result)
 
 
 @route("POST", "/api/participants/affiliation", roles=ADMIN, forbidden="Somente a coordenação pode alterar a afiliação.")
@@ -252,18 +332,52 @@ def balance_desks(req, user, data):
 
 @route("POST", "/api/participants/status", roles=ADMIN, forbidden="Somente a coordenação pode alterar a situação.")
 def set_status(req, user, data):
-    pid, status = str(data.get("id", "")), str(data.get("status", ""))
-    if status not in STATUS_STEPS:
-        return req.respond(400, {"error": "Situação inválida."})
+    return apply_change(req, user, data, "status", str(data.get("status", "")))
+
+
+@route("GET", "/api/backup/download", roles=ADMIN)
+def download_backup(req, user, data):
+    """Participantes completos (situação, horários) e todo o histórico, num arquivo restaurável."""
+    with connect() as db:
+        backup = build_backup(db)
+    return req.send_file(backup_filename(), backup_bytes(backup), "application/json; charset=utf-8")
+
+
+@route("POST", "/api/participants/clear", roles=ADMIN,
+       forbidden="Somente a coordenação pode limpar os participantes.")
+def clear_all(req, user, data):
+    """Apaga participantes e histórico (contas e configurações ficam). Guarda antes uma cópia
+    no servidor, além da que o painel baixa."""
+    if data.get("confirm") != "LIMPAR":
+        return req.respond(400, {"error": "Digite LIMPAR para confirmar."})
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
-        row = get_participant(db, pid)
-        if not row:
-            return req.respond(404, {"error": "Participante não encontrado."})
-        if status in ("searching", "ready", "completed") and pending_reasons(row):
-            return req.respond(409, {"error": "Há pagamento ou afiliação pendente. Resolva a pendência antes de avançar a situação."})
-        row = update_participant(db, pid, "status_" + status, user["username"],
-                                 **status_fields(row, status, user["username"]))
+        copy = save_server_copy(build_backup(db), "antes-de-limpar")
+        people, events = clear_participants(db)
         db.commit()
     export_csv()
-    return req.respond(200, {"item": participant_dict(row)})
+    print(f"Participantes e histórico apagados por {user['username']}: {people} participantes, {events} eventos. "
+          f"Cópia em {copy}", flush=True)
+    return req.respond(200, {"participants": people, "events": events, "server_copy": copy.name})
+
+
+@route("POST", "/api/backup/restore", roles=ADMIN, max_body=60_000_000,
+       forbidden="Somente a coordenação pode restaurar um backup.")
+def restore(req, user, data):
+    """Troca participantes e histórico pelos do backup; o estado anterior fica guardado no servidor."""
+    if data.get("confirm") != "RESTAURAR":
+        return req.respond(400, {"error": "Digite RESTAURAR para confirmar."})
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        copy = save_server_copy(build_backup(db), "antes-de-restaurar")
+        try:
+            people, events = restore_backup(db, data.get("backup"))
+        except (ValueError, sqlite3.IntegrityError) as exc:
+            db.execute("ROLLBACK")
+            message = str(exc) if isinstance(exc, ValueError) else "Backup com dados repetidos ou inconsistentes."
+            return req.respond(400, {"error": message})
+        db.commit()
+    export_csv()
+    print(f"Backup restaurado por {user['username']}: {people} participantes, {events} eventos. "
+          f"Estado anterior em {copy}", flush=True)
+    return req.respond(200, {"participants": people, "events": events, "server_copy": copy.name})

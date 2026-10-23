@@ -13,6 +13,7 @@ from support import CredenciamentoTestCase
 class QueueAndStatusTest(CredenciamentoTestCase):
     def test_complete_flow_and_atomic_claim(self):
         code, done, _ = self.request("/api/checkin", {"cpf": "12345678901"})
+        done.pop("ticket")
         self.assertEqual((code, done), (200, {"ok": True, "name": "Á*a S***a", "needs_guidance": False, "guiche": "1", "guiche_ranges": [{"from": "A", "to": "D"}], "guiche_priority": False}))
         users = [self.login("vol1"), self.login("vol2")]
         with database.connect() as db:
@@ -49,7 +50,7 @@ class QueueAndStatusTest(CredenciamentoTestCase):
         with database.connect() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM events WHERE participant_id=?", (pid,)).fetchone()[0], 5)
 
-    def test_attendant_can_view_other_desks_but_only_complete_own(self):
+    def test_attendant_can_handle_any_desk_and_the_search(self):
         input_file = Path(self.temp.name) / "extra-desk.json"
         input_file.write_text(json.dumps([
             {"nome": "Bruno Lima", "nome_cracha": "Bruno", "afiliacao": "Instituto B",
@@ -68,8 +69,13 @@ class QueueAndStatusTest(CredenciamentoTestCase):
         self.assertEqual(self.request("/api/action/ready", {"id": pid}, *volunteer)[0], 200)
         code, queue, _ = self.request("/api/queue?guiche=7", cookie=attendant[0])
         self.assertEqual((code, [item["id"] for item in queue["items"]]), (200, [pid]))
-        self.assertEqual(self.request("/api/action/complete", {"id": pid}, *attendant)[0], 409)
-        self.assertEqual(self.request("/api/action/undo_ready", {"id": pid}, *attendant)[0], 409)
+        # Atendente do guichê 1 também atende o guichê 7 e trabalha na separação.
+        self.assertEqual(self.request("/api/action/undo_ready", {"id": pid}, *attendant)[0], 200)
+        self.assertEqual(self.request("/api/action/release", {"id": pid}, *attendant)[0], 409)
+        self.assertEqual(self.request("/api/action/release", {"id": pid}, *volunteer)[0], 200)
+        self.assertEqual(self.request("/api/action/claim", {"id": pid}, *attendant)[0], 200)
+        self.assertEqual(self.request("/api/action/ready", {"id": pid}, *attendant)[0], 200)
+        self.assertEqual(self.request("/api/action/complete", {"id": pid}, *attendant)[0], 200)
 
     def test_volunteer_can_confirm_pickup_at_guiche(self):
         self.assertEqual(self.request("/api/checkin", {"cpf": "12345678901"})[0], 200)
