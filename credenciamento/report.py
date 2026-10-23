@@ -8,6 +8,7 @@ quando só uma pessoa o usa."""
 import csv
 import io
 import json
+import re
 from pathlib import Path
 
 from .common import normalize
@@ -19,22 +20,39 @@ from .snapshot import FORMAT, lookup_fingerprint
 REPORT_COLUMNS = ("credenciado", "credenciado_em", "credenciado_por", "buscado_por", "guiche", "situacao")
 
 
+def _column(fields, name):
+    """Coluna da lista original que corresponde a nome, email ou cpf, sem diferenciar maiúsculas,
+    acentos, espaços e hífens (ex.: "E-mail", "CPF")."""
+    return next((field for field in fields if re.sub(r"[^a-z0-9]", "", normalize(field)) == name), None)
+
+
 def _read_list(path):
-    content = path.read_text(encoding="utf-8-sig")
+    """Devolve (colunas, linhas, separador, {nome, email, cpf: coluna da lista})."""
+    raw = path.read_bytes()
+    try:
+        content = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # Planilhas salvas como CSV no Excel em português costumam vir em Windows-1252.
+        content = raw.decode("cp1252")
     if path.suffix.lower() == ".json":
         rows = json.loads(content)
         if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
             raise ValueError("A lista em JSON deve ser uma lista de registros.")
         fields = list(dict.fromkeys(key for row in rows for key in row))
-        return fields, [{key: "" if row.get(key) is None else str(row.get(key)) for key in fields} for row in rows], ","
-    for delimiter in (",", ";", "\t"):
-        reader = csv.DictReader(io.StringIO(content, newline=""), delimiter=delimiter)
-        fields = [field.strip() for field in reader.fieldnames or []]
-        if "nome" in fields and "email" in fields:
-            reader.fieldnames = fields
-            return fields, [row for row in reader if any(str(v or "").strip() for v in row.values())], delimiter
-    raise ValueError("A lista original precisa das colunas nome e email (separadas por vírgula, ponto e vírgula "
-                     "ou tabulação).")
+        rows = [{key: "" if row.get(key) is None else str(row.get(key)) for key in fields} for row in rows]
+        candidates = [(fields, rows, ",")]
+    else:
+        candidates = []
+        for delimiter in (",", ";", "\t"):
+            reader = csv.DictReader(io.StringIO(content, newline=""), delimiter=delimiter)
+            reader.fieldnames = fields = [field.strip() for field in reader.fieldnames or []]
+            candidates.append((fields, reader, delimiter))
+    for fields, rows, delimiter in candidates:
+        columns = {name: _column(fields, name) for name in ("nome", "email", "cpf")}
+        if columns["nome"] and columns["email"]:
+            return fields, [row for row in rows if any(str(v or "").strip() for v in row.values())], delimiter, columns
+    raise ValueError("A lista original precisa das colunas nome e email (ex.: Nome, E-mail), separadas por vírgula, "
+                     "ponto e vírgula ou tabulação.")
 
 
 def _load_backup(path):
@@ -62,7 +80,7 @@ def credentialed_report(list_path, output_path, backup_path=None):
     """Grava em output_path a lista original com as colunas de REPORT_COLUMNS; usa o backup quando
     informado, senão o banco atual. Devolve (linhas, credenciados, não encontrados)."""
     list_path = Path(list_path)
-    fields, rows, delimiter = _read_list(list_path)
+    fields, rows, delimiter, columns = _read_list(list_path)
     people, events = _load_backup(backup_path) if backup_path else _load_database()
     # Quem entregou o kit: o último "complete" de cada pessoa (um undo_complete seguido de nova
     # retirada gera outro).
@@ -79,10 +97,14 @@ def credentialed_report(list_path, output_path, backup_path=None):
     writer.writeheader()
     done = missing = 0
     for row in rows:
-        email, cpf = str(row.get("email") or "").strip(), cpf_digits(row.get("cpf"))
+        email = str(row.get(columns["email"]) or "").strip()
+        cpf = cpf_digits(row.get(columns["cpf"]) if columns["cpf"] else "")
+        if 9 <= len(cpf) < 11:
+            # Planilhas tiram os zeros à esquerda de CPFs guardados como número.
+            cpf = cpf.zfill(11)
         mail = email_key(email.casefold()) if email else ""
         same_email = by_email.get(mail, [])
-        person = (by_name_email.get((normalize(row.get("nome")), mail))
+        person = (by_name_email.get((normalize(row.get(columns["nome"])), mail))
                   or (by_cpf.get(cpf_key(cpf)) if len(cpf) == 11 else None)
                   or (same_email[0] if len(same_email) == 1 else None))
         values = {key: row.get(key, "") for key in fields}
