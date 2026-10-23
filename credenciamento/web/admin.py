@@ -19,6 +19,7 @@ from ..participants import public_checkin_state, set_public_checkin
 from ..payments import ok_statuses, payment_options, save_payment_config
 from ..snapshot import (backup_bytes, backup_filename, build_backup, clear_participants, restore_backup,
                         save_server_copy)
+from ..version import current as current_version
 from .routes import ADMIN, route
 
 
@@ -47,6 +48,7 @@ def dashboard(req, user, data):
                               "registration_pending": sum(r["status"] != "completed" and bool(pending_reasons(r))
                                                           for r in rows),
                               "payment_options": payment_options_list,
+                              "version": current_version(),
                               "items": [participant_dict(r, private=True) for r in rows]})
 
 

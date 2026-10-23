@@ -581,3 +581,4 @@ dialog .actions .button { flex: 1; }
 .danger-zone { border-color: #efb1b1; border-left: 4px solid #c0392b; background: #fff8f7; }
 .button.danger { background: #b3261e; }
 .button.danger:disabled, .backup-block .button:disabled { opacity: .5; cursor: not-allowed; }
+.app-version { margin: 0 0 20px; font-size: .82rem; text-align: right; }

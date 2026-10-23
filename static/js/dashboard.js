@@ -72,6 +72,7 @@ async function refresh() {
     fillPaymentFilter();
     fillCountryFilter();
     $('sync-status').textContent = `Atualizado às ${clockTime()} · ${syncText(data)}`;
+    $('app-version').textContent = `Versão do sistema: ${data.version.label}`;
     renderDashboardKeepingFocus();
     renderBatch();
     message('page-error', '');
