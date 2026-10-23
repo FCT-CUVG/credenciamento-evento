@@ -9,6 +9,7 @@ from .. import settings
 from ..auth import recent_count
 from ..csv_io import (event_logs_download, export_csv, import_text, participants_download,
                       participants_template_download)
+from ..dashboard_layout import dashboard_layout, save_dashboard_layout
 from ..db import connect, get_participant, participant_dict, pending_reasons, update_participant
 from ..changes import ChangeError, participant_change
 from ..desks import (available_guiches, balanced_desk_names, balanced_ranges, configured_ranges, letter_counts,
@@ -95,6 +96,22 @@ def default_logo(req, user, data):
 def default_theme(req, user, data):
     reset_theme(user["username"])
     return req.respond(200, theme_settings())
+
+
+@route("GET", "/api/dashboard/layout", roles=ADMIN)
+def layout(req, user, data):
+    with connect() as db:
+        return req.respond(200, dashboard_layout(db))
+
+
+@route("POST", "/api/dashboard/layout", roles=ADMIN, forbidden="Somente a coordenação pode organizar o painel.")
+def update_layout(req, user, data):
+    try:
+        with connect() as db:
+            saved = save_dashboard_layout(db, data.get("order"), user["username"])
+    except ValueError as exc:
+        return req.respond(400, {"error": str(exc)})
+    return req.respond(200, saved)
 
 
 @route("POST", "/api/participants/find", roles=ADMIN)

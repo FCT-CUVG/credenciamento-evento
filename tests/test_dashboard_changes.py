@@ -114,5 +114,19 @@ class DashboardChangesTest(CredenciamentoTestCase):
                                       *self.login("vol1"))[0], 403)
 
 
+    def test_dashboard_block_order_is_saved_for_every_admin(self):
+        admin = self.login("admin")
+        self.assertEqual(self.request("/api/dashboard/layout", cookie=admin[0])[1]["order"], [])
+        order = ["participants", "stats", "checkin"]
+        self.assertEqual(self.request("/api/dashboard/layout", {"order": order}, *self.login("vol1"))[0], 403)
+        code, saved, _ = self.request("/api/dashboard/layout", {"order": order}, *admin)
+        self.assertEqual((code, saved["order"], saved["by"]), (200, order, "admin"))
+        self.assertEqual(self.request("/api/dashboard/layout", cookie=self.login("admin")[0])[1]["order"], order)
+        for invalid in ("stats", ["stats", "stats"], ["<script>"], [1], ["x"] * 31):
+            with self.subTest(order=invalid):
+                code, error, _ = self.request("/api/dashboard/layout", {"order": invalid}, *admin)
+                self.assertEqual(code, 400)
+        self.assertEqual(self.request("/api/dashboard/layout", {"order": []}, *admin)[1]["order"], [])
+
 if __name__ == "__main__":
     unittest.main()
