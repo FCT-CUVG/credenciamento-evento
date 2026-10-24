@@ -1,7 +1,7 @@
 // Aba "Consolidação": lista original de inscrição (ex.: ECOS) x credenciamento, só neste navegador.
 // O arquivo fica na memória da aba: não vai ao servidor nem a localStorage; recarregar apaga.
 import {$, api, el} from '../common.js';
-import {consolidate, decode} from './consolidation-core.js';
+import {consolidate, decode, keyEntries} from './consolidation-core.js';
 
 const TITLES = {
   cancelado_e_credenciado: 'Cancelados na lista, mas credenciados',
@@ -67,7 +67,9 @@ export function initConsolidation(showParticipants) {
     status('Consolidando...');
     try {
       const {people} = await api('/api/consolidation/people');
-      render(consolidate(text, people, manual));
+      // Só linha, CPF e e-mail vão ao servidor, que compara com as chaves e não guarda nada.
+      const {matches} = await api('/api/consolidation/match', {entries: keyEntries(text)});
+      render(consolidate(text, people, manual, new Map(matches.map(match => [match.line, match]))));
       status('');
     } catch (err) {
       $('consolidation-result').hidden = true;
@@ -118,7 +120,9 @@ export function initConsolidation(showParticipants) {
         button('Baixar sua lista com o credenciamento',
           () => download(`${baseName}-atualizada.csv`, result.listCsv), 'button small'),
         button(`Baixar só os credenciados (${s.matchedCompleted})`,
-          () => download(`${baseName}-credenciados.csv`, result.completedCsv)))),
+          () => download(`${baseName}-credenciados.csv`, result.completedCsv)),
+        button('Só os credenciados, com as colunas da sua lista',
+          () => download(`${baseName}-credenciados-colunas-originais.csv`, result.completedOriginalCsv)))),
       part(`No credenciamento, fora da sua lista: ${plural(s.others.total, 'pessoa', 'pessoas')}`, [
         `${plural(s.others.completed, 'credenciada', 'credenciadas')}`,
         `${plural(s.others.total - s.others.completed, 'não credenciada', 'não credenciadas')}`,
@@ -131,7 +135,7 @@ export function initConsolidation(showParticipants) {
         `${s.system.completed} credenciados.`
     ];
     if (s.manual) lines.push(`${plural(s.manual, 'correspondência confirmada', 'correspondências confirmadas')} à mão.`);
-    if (!s.hasCpf) lines.push('A lista não tem coluna CPF: homônimos ficam como não encontrados, com sugestões.');
+    if (!s.hasCpf) lines.push('A lista não tem coluna CPF: a comparação é pelo nome e pelo e-mail.');
     const summary = el('ul', 'consolidation-summary');
     for (const line of lines) summary.append(el('li', '', line));
 

@@ -1,8 +1,9 @@
-// Consolidação da lista original de inscrição (ex.: exportação do ECOS) com o credenciamento, só no
-// navegador: a lista tem CPF e e-mail em texto e não vai ao servidor. Sem a CHECKIN_LOOKUP_SECRET
-// (que fica só no servidor), CPF e e-mail não podem ser comparados com as chaves guardadas; cada
-// linha é procurada pelo nome e, quando a lista tem CPF, pelos 3 primeiros dígitos para separar
-// homônimos. O que não bater recebe sugestões, e a coordenação confirma a mesma pessoa (manual).
+// Consolidação da lista original de inscrição (ex.: exportação do ECOS) com o credenciamento, no
+// navegador. A CHECKIN_LOOKUP_SECRET fica só no servidor: para comparar CPF e e-mail com as chaves
+// guardadas, vão ao servidor só a linha, o CPF e o e-mail de cada inscrição (keyEntries), e ele
+// devolve os participantes de cada uma sem guardar nada. Nome e demais colunas ficam aqui. Sem
+// resultado pelas chaves, a linha é procurada pelo nome e pelos 3 primeiros dígitos do CPF. O que não
+// bater recebe sugestões, e a coordenação confirma a mesma pessoa (manual).
 // Sem DOM: os testes rodam este módulo no Node.
 
 export const SITUACAO = {registered: 'inscrito (não chegou)', prechecked: 'chegou, aguardando busca',
@@ -110,8 +111,16 @@ function suggest(nameKey, prefix, people) {
     .slice(0, 3).map(item => item.person);
 }
 
+// O que vai ao servidor para comparar com as chaves: só a linha, o CPF e o e-mail de cada inscrição.
+export function keyEntries(text) {
+  const {column, rows} = readList(text);
+  return rows.map(({line, row}) => ({line, cpf: cpfOf(row, column), email: String(row[column.email] ?? '').trim()}))
+    .filter(entry => entry.cpf.length === 11 || entry.email.includes('@'));
+}
+
 // manual: Map(linha da planilha -> id do participante) confirmados pela coordenação.
-export function consolidate(text, people, manual = new Map()) {
+// keyMatches: Map(linha -> {cpf: id ou null, email: [ids]}) devolvido pelo servidor (null: só pelo nome).
+export function consolidate(text, people, manual = new Map(), keyMatches = null) {
   const {fields, column, delimiter, rows, ignored} = readList(text);
   const byId = new Map(people.map(person => [person.id, person]));
   const byName = new Map();
@@ -121,8 +130,17 @@ export function consolidate(text, people, manual = new Map()) {
   }
   const find = (line, row) => {
     if (manual.has(line) && byId.has(manual.get(line))) return [byId.get(manual.get(line)), 'manual'];
+    const nameKey = normalize(row[column.nome]), keys = keyMatches?.get(line);
+    if (keys) {
+      // Como no scripts/credenciados.py: nome + e-mail, depois CPF, depois e-mail de uma só pessoa.
+      const byEmail = keys.email.map(id => byId.get(id)).filter(Boolean);
+      const sameName = byEmail.find(person => person.name_key === nameKey);
+      if (sameName) return [sameName, 'nome+email'];
+      if (keys.cpf && byId.has(keys.cpf)) return [byId.get(keys.cpf), 'cpf'];
+      if (byEmail.length === 1) return [byEmail[0], 'email'];
+    }
     const cpf = cpfOf(row, column), prefix = cpf.length === 11 ? cpf.slice(0, 3) : '';
-    const candidates = byName.get(normalize(row[column.nome])) || [];
+    const candidates = byName.get(nameKey) || [];
     const pool = prefix ? candidates.filter(p => !p.cpf_prefix || p.cpf_prefix === prefix) : candidates;
     if (pool.length !== 1) return [null, ''];
     return [pool[0], prefix && pool[0].cpf_prefix ? 'nome+cpf_inicio' : 'nome'];
@@ -228,6 +246,8 @@ export function consolidate(text, people, manual = new Map()) {
   const completedRows = output.filter(values => values.credenciado === 'sim' && !values.mesma_pessoa_que_linha);
   return {summary, issues, listCsv: toCsv([...fields, ...EXTRA], output, delimiter),
     completedCsv: toCsv([...fields, ...EXTRA], completedRows, delimiter),
+    // Os mesmos credenciados só com as colunas da lista enviada, sem as do credenciamento.
+    completedOriginalCsv: toCsv(fields, completedRows, delimiter),
     othersCsv: toCsv(OTHER_FIELDS, others, delimiter), issuesCsv: toCsv(ISSUE_FIELDS, issues, delimiter)};
 }
 
