@@ -3,5 +3,6 @@ config/evento.yaml
 __pycache__/
 *.pyc
 .env
+.envrc
 .DS_Store
 /VERSION
