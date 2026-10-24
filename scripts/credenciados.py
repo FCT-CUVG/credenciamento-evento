@@ -13,11 +13,12 @@ Gera dois arquivos:
                         - nao_credenciado: está na lista e não retirou o kit
                         - nao_encontrado: está na lista e não existe no sistema de credenciamento
 
-O status da inscrição na lista (pago, cancelado...) não importa. A mesma pessoa (mesmo participante
-ou, sem ele, mesmo CPF ou e-mail) em várias linhas conta pela linha da última movimentação: a coluna
-de data com "última movimentação", "atualização" ou "alteração" no nome (dd/mm/aaaa ou aaaa-mm-dd,
-com hora opcional) ou, sem ela, a última linha do arquivo. Nas outras linhas, linha_mais_recente
-indica qual vale.
+A mesma pessoa (mesmo participante ou, sem ele, mesmo CPF ou e-mail) em várias linhas conta pela
+linha da última movimentação: a coluna de data com "última movimentação", "atualização" ou
+"alteração" no nome (dd/mm/aaaa ou aaaa-mm-dd, com hora opcional) ou, sem ela, a última linha do
+arquivo. Nas outras linhas, linha_mais_recente indica qual vale. Se essa linha tem status cancelado
+e a pessoa não foi credenciada, ela fica fora das contas e das pendências (credenciado = cancelada);
+credenciada, conta, porque a inscrição estava certa.
 
 Só usa a biblioteca padrão do Python.
 """
@@ -65,6 +66,7 @@ if backup.get("lookup") != hmac.new(SECRET, b"backup-fingerprint", hashlib.sha25
     sys.exit("Chave errada: este backup foi feito com outra CHECKIN_LOOKUP_SECRET.")
 people = backup["participants"]
 delivered_by = {e["participant_id"]: e["actor"] for e in backup["events"] if e["action"] == "complete"}
+by_id = {p["id"]: p for p in people}
 by_name_email = {(p["name_key"], p["email_key"]): p for p in people}
 by_cpf = {p["cpf_key"]: p for p in people if p.get("cpf_key")}
 by_email = {}
@@ -81,7 +83,7 @@ for delimiter in (";", ",", "\t"):
     reader = csv.DictReader(io.StringIO(content, newline=""), delimiter=delimiter)
     reader.fieldnames = fields = [f.strip() for f in reader.fieldnames or []]
     column = {name: next((f for f in fields if re.sub(r"[^a-z0-9]", "", normalize(f)) == name), None)
-              for name in ("nome", "email", "cpf")}
+              for name in ("nome", "email", "cpf", "status")}
     if column["nome"] and column["email"]:
         break
 else:
@@ -138,9 +140,24 @@ for row in reader:
         continue  # linha sem nome (ex.: total ou rodapé da exportação): não é inscrição
     person, found_by = find(row)
     cpf, email = cpf_of(row), str(row.get(column["email"]) or "").strip().lower()
-    group = ("p", person["id"]) if person else ("c", cpf) if len(cpf) == 11 else ("e", email) if email \
-        else ("l", reader.line_num)
-    items.append((reader.line_num, row, person, found_by, group, moment(row.get(movement)) if movement else None))
+    items.append([reader.line_num, row, person, found_by, None, moment(row.get(movement)) if movement else None,
+                  cpf if len(cpf) == 11 else "", email])
+
+# Linha sem pessoa do credenciamento, mas com o CPF ou o e-mail de uma linha que tem: é a mesma pessoa
+# (ex.: tentativa de inscrição com e-mail digitado errado e CPF certo).
+owners = {}
+for item in items:
+    if item[2]:
+        for value in (("c", item[6]), ("e", item[7])):
+            if value[1]:
+                owners.setdefault(value, set()).add(item[2]["id"])
+for item in items:
+    if not item[2]:
+        ids = set().union(*(owners.get(value, set()) for value in (("c", item[6]), ("e", item[7])) if value[1]))
+        if len(ids) == 1:
+            item[2], item[3] = by_id[ids.pop()], "outra_linha"
+    item[4] = ("p", item[2]["id"]) if item[2] else ("c", item[6]) if item[6] else ("e", item[7]) if item[7] \
+        else ("l", item[0])
 
 
 def recency(item):
@@ -153,6 +170,15 @@ for item in items:
     if item[4] not in latest or recency(item) > recency(latest[item[4]]):
         latest[item[4]] = item
 
+
+def cancelled(item):
+    return bool(column["status"]) and normalize(item[1].get(column["status"])).startswith("cancel")
+
+
+# Cancelada na última movimentação e não credenciada: fica fora das contas e das pendências.
+left = {group for group, main in latest.items()
+        if cancelled(main) and not (main[2] and main[2]["status"] == "completed")}
+
 extra = ["credenciado", "credenciado_em", "credenciado_por", "buscado_por", "guiche", "situacao",
          "encontrado_por", "participante_id", "linha_mais_recente"]
 issues = []  # (ocorrência, nome, linha na lista, situação, credenciado em, por, guichê, participante)
@@ -160,12 +186,15 @@ with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
     writer = csv.DictWriter(f, fieldnames=fields + extra, delimiter=delimiter, extrasaction="ignore")
     writer.writeheader()
     for item in items:
-        line, row, person, found_by, group, _ = item
+        line, row, person, found_by, group = item[:5]
         main = latest[group]
         values = {k: row.get(k, "") for k in fields}
         values["linha_mais_recente"] = "" if main is item else main[0]
         name = row.get(column["nome"], "")
-        if person is None:
+        if group in left:
+            values.update(credenciado="cancelada", encontrado_por=found_by,
+                          participante_id=person["id"] if person else "")
+        elif person is None:
             values["credenciado"] = "não encontrado"
             if main is item:
                 issues.append(("nao_encontrado", name, str(line), "", "", "", "", ""))
@@ -202,8 +231,10 @@ with open(issues_path, "w", newline="", encoding="utf-8-sig") as f:
 # 4) Resumo
 count = {kind: sum(issue[0] == kind for issue in issues) for kind in order}
 matched = [p for p in people if p["id"] in in_list]
-print(f"Lista original: {len(items)} linhas, {len(latest)} pessoas; vale a linha da última movimentação "
-      f"({'coluna ' + movement if movement else 'sem coluna de data: a última linha do arquivo'}).")
+print(f"Lista original: {len(items)} linhas, {len(latest) - len(left)} pessoas; vale a linha da última "
+      f"movimentação ({'coluna ' + movement if movement else 'sem coluna de data: a última linha do arquivo'}).")
+if left:
+    print(f"Inscrições canceladas fora das contas (quem foi credenciado conta, mesmo cancelado): {len(left)}.")
 print(f"Pessoas da lista: {len(matched)} encontradas, {sum(p['status'] == 'completed' for p in matched)} "
       f"credenciadas e {count['nao_credenciado']} não credenciadas; {count['nao_encontrado']} não encontradas no "
       f"sistema.")

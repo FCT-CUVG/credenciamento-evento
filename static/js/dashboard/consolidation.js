@@ -104,9 +104,11 @@ export function initConsolidation(showParticipants) {
         `${plural(s.list.yes, 'credenciada', 'credenciadas')}`,
         `${plural(s.list.no, 'não credenciada', 'não credenciadas')}`,
         `${plural(s.list.notFound, 'não encontrada', 'não encontradas')} no credenciamento`,
-        s.list.rows > s.list.people ? 'Quem está em mais de uma linha conta pela linha da última movimentação ' +
-          (s.dateColumn ? `(coluna “${s.dateColumn}”)` : '(sem coluna de data: a última linha do arquivo)') +
-          '; o status da lista não muda nada.' : '',
+        s.list.cancelled ? `${plural(s.list.cancelled, 'inscrição cancelada ficou', 'inscrições canceladas ficaram')} ` +
+          'de fora (quem foi credenciado conta, mesmo cancelado).' : '',
+        s.list.rows > s.list.people + s.list.cancelled ? 'Quem está em mais de uma linha conta pela linha da última ' +
+          'movimentação ' + (s.dateColumn ? `(coluna “${s.dateColumn}”).` : '(sem coluna de data: a última linha do arquivo).')
+          : '',
         // Só avisa se nenhuma data da coluna escolhida pôde ser lida.
         s.dateColumn && s.undated === s.list.rows ? `Nenhuma data da coluna “${s.dateColumn}” pôde ser lida; ` +
           'escolha outra coluna.' : ''

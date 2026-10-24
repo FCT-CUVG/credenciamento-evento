@@ -31,7 +31,9 @@ process.stdout.write(JSON.stringify(people ? consolidate(text, people, new Map(m
 # Exportação do sistema de inscrição salva pelo Excel: Windows-1252, cabeçalhos próprios, CPF como
 # número sem o zero à esquerda, datas em dois formatos e um campo com aspas, separador e quebra de
 # linha. As linhas contam como no Excel: a quebra dentro do campo não abre outra linha; a vazia, sim.
-# O status não importa: a Eva vale pela linha 6 (cancelada, mas a última movimentação).
+# A Eva vale pela linha 6 (cancelada, mas credenciada: conta). Fulano (fora do sistema) e o Gil do CPF 666
+# (no sistema, não credenciado) têm a última linha cancelada: ficam fora das contas. A linha 13 é a Ana
+# com outro nome e e-mail, mas o mesmo CPF da linha 2.
 ORIGINAL = ("Id;Nome;Status;E-mail;CPF;Última movimentação;Obs\n"
             '1;Ána Silva;Pago;ana@example.org;123.456.789-01;18/10/2026 10:00;"diz ""oi""; e\nquebra"\n'
             "2;Bruno Lima Júnior;Pago;outro@example.org;98765432100;18/10/2026 10:00;\n"
@@ -43,7 +45,9 @@ ORIGINAL = ("Id;Nome;Status;E-mail;CPF;Última movimentação;Obs\n"
             "8;Fulano;Cancelado;fulano@example.org;;19/10/2026;\n"
             "\n"
             "10;Gil Souza;Pago;gil@example.org;55555555555;;=1+1\n"
-            "Total: 10;;;;;;\n")
+            "11;Gil Souza;Cancelado;gil2@example.org;66666666666;;\n"
+            "12;Ana S. Pereira;Cancelado;ana.velho@example.org;123.456.789-01;01/10/2026;\n"
+            "Total: 12;;;;;;\n")
 
 
 @unittest.skipUnless(NODE, "Node não instalado")
@@ -101,49 +105,52 @@ class ConsolidationTest(CredenciamentoTestCase):
     def test_each_person_counts_by_the_row_of_the_latest_movement(self):
         result = self.run_core()
         rows = self.rows(result["listCsv"])
-        # Every row stays, cancelled ones included; the original columns come back untouched.
-        self.assertEqual([row["Id"] for row in rows], ["1", "2", "3", "4", "5", "6", "7", "8", "10"])
+        # Every row stays in the file, cancelled ones included; the original columns come back untouched.
+        self.assertEqual([row["Id"] for row in rows], ["1", "2", "3", "4", "5", "6", "7", "8", "10", "11", "12"])
         self.assertEqual(list(rows[0])[:7], ["Id", "Nome", "Status", "E-mail", "CPF", "Última movimentação", "Obs"])
         self.assertEqual(rows[0]["Obs"], 'diz "oi"; e\nquebra')
         self.assertEqual((rows[0]["credenciado"], rows[0]["encontrado_por"]), ("não", "nome+cpf_inicio"))
-        # Carla is cancelled in the list but was credentialed: the status does not matter.
+        # Carla is cancelled in the list but was credentialed: the registration was right, she counts.
         self.assertEqual((rows[2]["credenciado"], rows[2]["linha_mais_recente"]), ("sim", ""))
-        # Eva: three rows; the latest movement is line 6 (cancelled), the others point to it.
+        # Eva: three rows; the latest movement is line 6 (cancelled, but credentialed), the others point to it.
         self.assertEqual([(r["credenciado"], r["credenciado_por"], r["linha_mais_recente"]) for r in rows[3:6]],
                          [("sim", "att2", "6"), ("sim", "att2", ""), ("sim", "att2", "6")])
-        # Fulano is not in the system: his two rows are one person, counted by line 9 (the dated one).
+        # Fulano's latest movement (line 9) is cancelled and he is not in the system: left out.
         self.assertEqual([(r["credenciado"], r["linha_mais_recente"]) for r in rows[6:8]],
-                         [("não encontrado", "9"), ("não encontrado", "")])
+                         [("cancelada", "9"), ("cancelada", "")])
         # Homonyms: the CPF start picks the right Gil; formulas are neutralised.
         gil = next(p for p in self.people() if p["cpf_prefix"] == "555")
         self.assertEqual((rows[8]["participante_id"], rows[8]["Obs"]), (gil["id"], "'=1+1"))
+        # The other Gil is in the system, not credentialed, cancelled: left out, and not "outside the list".
+        self.assertEqual(rows[9]["credenciado"], "cancelada")
+        # Line 13 has another name and e-mail but Ana's CPF: same person, counted by line 2.
+        self.assertEqual((rows[10]["encontrado_por"], rows[10]["linha_mais_recente"], rows[10]["credenciado"]),
+                         ("outra_linha", "2", "não"))
 
         issues = [(i["ocorrencia"], i["nome"], i["linha_lista"]) for i in result["issues"]]
         self.assertEqual(issues, [("fora_da_lista", "Bruno Lima", ""), ("fora_da_lista", "Davi Fora", ""),
-                                  ("fora_da_lista", "Gil Souza", ""),
                                   ("nao_credenciado", "Ána Silva", "2"), ("nao_credenciado", "Gil Souza", "11"),
-                                  ("nao_encontrado", "Bruno Lima Júnior", "3"), ("nao_encontrado", "Fulano", "9")])
+                                  ("nao_encontrado", "Bruno Lima Júnior", "3")])
         not_found = {i["nome"]: [p["name"] for p in i["sugestoes"]] for i in result["issues"]
                      if i["ocorrencia"] == "nao_encontrado"}
-        self.assertEqual(not_found, {"Bruno Lima Júnior": ["Bruno Lima"], "Fulano": []})
+        self.assertEqual(not_found, {"Bruno Lima Júnior": ["Bruno Lima"]})
         self.assertEqual([row["ocorrencia"] for row in self.rows(result["issuesCsv"])],
                          [kind for kind, _, _ in issues])
         summary = result["summary"]
-        self.assertEqual(summary["list"], {"rows": 9, "people": 6, "yes": 2, "no": 2, "notFound": 2})
-        self.assertEqual((summary["dateColumn"], summary["undated"]), ("Última movimentação", 2))
-        self.assertEqual(summary["others"], {"total": 3, "completed": 2, "noCpf": 0})
+        self.assertEqual(summary["list"], {"rows": 11, "people": 5, "yes": 2, "no": 2, "notFound": 1, "cancelled": 2})
+        self.assertEqual((summary["dateColumn"], summary["undated"]), ("Última movimentação", 3))
+        self.assertEqual(summary["others"], {"total": 2, "completed": 2, "noCpf": 0})
         self.assertEqual(summary["system"], {"total": 7, "arrived": 4, "completed": 4})
         # Everyone in the system without a row in the list goes to the second list.
         others = [(row["nome"], row["cpf_inicio"], row["credenciado"]) for row in self.rows(result["othersCsv"])]
-        self.assertEqual(others, [("Bruno Lima", "987", "sim"), ("Davi Fora", "222", "sim"), ("Gil Souza", "666", "não")])
+        self.assertEqual(others, [("Bruno Lima", "987", "sim"), ("Davi Fora", "222", "sim")])
         # Only the credentialed, on the row of their latest movement (with and without our columns).
         self.assertEqual([row["Id"] for row in self.rows(result["completedCsv"])], ["3", "5"])
         original = self.rows(result["completedOriginalCsv"])
         self.assertEqual(list(original[0]), ["Id", "Nome", "Status", "E-mail", "CPF", "Última movimentação", "Obs"])
         self.assertEqual([row["Id"] for row in original], ["3", "5"])
-        # The export footer (no name) is not an inscription: it is reported, not counted.
-        self.assertEqual(summary["ignored"], [{"line": 12, "text": "Total: 10"}])
-        self.assertEqual(len(rows), 9)
+        # The export footer (no name) is not an inscription.
+        self.assertEqual(summary["ignored"], [{"line": 14, "text": "Total: 12"}])
 
     def test_without_a_date_column_the_last_row_counts(self):
         result = self.run_core(movement=None)
@@ -168,7 +175,7 @@ class ConsolidationTest(CredenciamentoTestCase):
         # Name and the other columns stay in the browser; the CPF that lost its leading zero is fixed.
         self.assertEqual(sorted({key for entry in entries for key in entry}), ["cpf", "email", "line"])
         self.assertIn({"line": 6, "cpf": "03333333333", "email": "eva@example.org"}, entries)
-        self.assertEqual(len(entries), 9)  # every row has CPF or e-mail
+        self.assertEqual(len(entries), 11)  # every row has CPF or e-mail
         code, body, _ = self.match(entries)
         self.assertEqual(code, 200)
         bruno, eva = self.pid_by_email("bruno@example.org"), self.pid_by_email("eva@example.org")
@@ -194,7 +201,7 @@ class ConsolidationTest(CredenciamentoTestCase):
         kinds = [(i["ocorrencia"], i["nome"]) for i in result["issues"]]
         self.assertNotIn(("nao_encontrado", "Bruno Lima Júnior"), kinds)
         self.assertNotIn(("fora_da_lista", "Bruno Lima"), kinds)
-        self.assertIn(("nao_encontrado", "Fulano"), kinds)
+        self.assertFalse([kind for kind in kinds if kind[1] == "Fulano"])  # cancelled, not in the system
 
 
 if __name__ == "__main__":

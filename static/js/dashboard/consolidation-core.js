@@ -5,8 +5,9 @@
 // resultado pelas chaves, a linha é procurada pelo nome e pelos 3 primeiros dígitos do CPF. O que não
 // bater recebe sugestões, e a coordenação confirma a mesma pessoa (manual).
 //
-// O status da lista (pago, cancelado...) não importa. Quando a mesma pessoa está em várias linhas,
-// vale a da última movimentação (a coluna de data escolhida; sem ela, a última linha do arquivo).
+// Quando a mesma pessoa está em várias linhas, vale a da última movimentação (a coluna de data
+// escolhida; sem ela, a última linha do arquivo). O status só importa nessa linha: cancelada, a
+// pessoa fica fora das contas, salvo se foi credenciada (então a inscrição estava certa).
 // Sem DOM: os testes rodam este módulo no Node.
 
 export const SITUACAO = {registered: 'inscrito (não chegou)', prechecked: 'chegou, aguardando busca',
@@ -78,7 +79,7 @@ export function readList(text) {
   for (const delimiter of [';', ',', '\t']) {
     const [header = [], ...records] = parseCsv(text, delimiter);
     const fields = header.map(field => field.trim());
-    const column = Object.fromEntries(['nome', 'email', 'cpf'].map(name =>
+    const column = Object.fromEntries(['nome', 'email', 'cpf', 'status'].map(name =>
       [name, fields.find(field => columnName(field) === name) ?? null]));
     if (!column.nome || !column.email) continue;
     const rows = [], ignored = [];
@@ -179,9 +180,27 @@ export function consolidate(text, people, manual = new Map(), keyMatches = null,
   const items = rows.map(({line, row}) => {
     const [person, foundBy] = find(line, row);
     const cpf = cpfOf(row, column), email = String(row[column.email] ?? '').trim().toLowerCase();
-    const group = person ? 'p:' + person.id : cpf.length === 11 ? 'c:' + cpf : email ? 'e:' + email : 'l:' + line;
-    return {line, row, person, foundBy, group, at: dateColumn ? moment(row[dateColumn]) : null};
+    return {line, row, person, foundBy, cpf: cpf.length === 11 ? cpf : '', email,
+      at: dateColumn ? moment(row[dateColumn]) : null};
   });
+  // Linha sem pessoa do credenciamento, mas com o CPF ou o e-mail de uma linha que tem: é a mesma
+  // pessoa (ex.: tentativa de inscrição com e-mail digitado errado e CPF certo).
+  const owners = new Map();
+  for (const item of items.filter(item => item.person)) {
+    for (const value of [item.cpf && 'c:' + item.cpf, item.email && 'e:' + item.email].filter(Boolean)) {
+      if (!owners.has(value)) owners.set(value, new Set());
+      owners.get(value).add(item.person.id);
+    }
+  }
+  for (const item of items.filter(item => !item.person)) {
+    const ids = new Set([item.cpf && 'c:' + item.cpf, item.email && 'e:' + item.email]
+      .flatMap(value => value && owners.has(value) ? [...owners.get(value)] : []));
+    if (ids.size === 1) [item.person, item.foundBy] = [byId.get([...ids][0]), 'outra_linha'];
+  }
+  for (const item of items) {
+    item.group = item.person ? 'p:' + item.person.id : item.cpf ? 'c:' + item.cpf : item.email ? 'e:' + item.email
+      : 'l:' + item.line;
+  }
   // Vale a linha da última movimentação; sem data legível, conta como mais antiga; empate, a de baixo.
   const later = (a, b) => ((a.at ?? -Infinity) - (b.at ?? -Infinity)) || (a.line - b.line);
   const latest = new Map();
@@ -199,12 +218,22 @@ export function consolidate(text, people, manual = new Map(), keyMatches = null,
   const issue = (kind, name, line, person) => ({ocorrencia: kind, nome: name, linha_lista: line,
     ...(person ? details(person) : Object.fromEntries(ISSUE_FIELDS.slice(3).map(key => [key, ''])))});
 
+  // Cancelada na última movimentação e não credenciada: fica fora das contas e das pendências.
+  const isCancelled = item => Boolean(column.status) && normalize(item.row[column.status]).startsWith('cancel');
+  const left = new Set([...latest].filter(([, main]) => isCancelled(main) && main.person?.status !== 'completed')
+    .map(([group]) => group));
+
   const issues = [], output = [], latestRows = [];
   for (const item of items) {
     const {line, row, person, foundBy} = item, main = latest.get(item.group), isLatest = main === item;
     const values = Object.fromEntries(fields.map(field => [field, row[field] ?? '']));
     values.linha_mais_recente = isLatest ? '' : String(main.line);
     const name = row[column.nome] ?? '';
+    if (left.has(item.group)) {
+      Object.assign(values, {credenciado: 'cancelada', encontrado_por: foundBy, participante_id: person?.id || ''});
+      output.push(values);
+      continue;
+    }
     if (!person) {
       values.credenciado = 'não encontrado';
       if (isLatest) issues.push(issue('nao_encontrado', name, String(line)));
@@ -219,6 +248,7 @@ export function consolidate(text, people, manual = new Map(), keyMatches = null,
     if (isLatest) latestRows.push(values);
   }
 
+  // Quem tem linha na lista, mesmo cancelada, não está "fora da lista".
   const inList = new Set(items.filter(item => item.person).map(item => item.person.id));
   const others = [];
   for (const person of people) {
@@ -246,7 +276,7 @@ export function consolidate(text, people, manual = new Map(), keyMatches = null,
   const completedRows = latestRows.filter(values => values.credenciado === 'sim');
   const summary = {
     list: {rows: output.length, people: latestRows.length, yes: completedRows.length, no: count.nao_credenciado,
-      notFound: count.nao_encontrado},
+      notFound: count.nao_encontrado, cancelled: left.size},
     others: {total: others.length, completed: others.filter(item => item.credenciado === 'sim').length,
       noCpf: others.filter(item => !item.cpf_inicio).length},
     dateColumn, undated: dateColumn ? items.filter(item => item.at === null).length : 0, ignored,
