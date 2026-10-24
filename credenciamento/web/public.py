@@ -116,13 +116,18 @@ def login(req, user, data):
     username = str(data.get("username", "")).strip().casefold()[:100]
     password = str(data.get("password", ""))
     ip_key, user_key = "login-ip:" + req.client_ip(), "login-user:" + username
-    if over_limit(ip_key, "login_ip") or over_limit(user_key, "login_user"):
+    if over_limit(ip_key, "login_ip"):
         return req.respond(429, {"error": "Muitas tentativas. Aguarde alguns minutos."})
     with connect() as db:
         user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-    if not check_password(user, password):
-        record(ip_key, "login_ip")
-        record(user_key, "login_user")
+    # Conta bloqueada não avisa: a tela mostra o mesmo erro de senha errada, e só quem a
+    # coordenação avisou sabe que é para esperar uns segundos (CHECKIN_LIMIT_LOGIN_USER).
+    # A senha é conferida mesmo bloqueada, para a resposta levar o mesmo tempo.
+    locked = over_limit(user_key, "login_user")
+    if not check_password(user, password) or locked:
+        if not locked:
+            record(ip_key, "login_ip")
+            record(user_key, "login_user")
         return req.respond(401, {"error": "Usuário ou senha incorretos."})
     with connect() as db:
         token = create_session(db, username)

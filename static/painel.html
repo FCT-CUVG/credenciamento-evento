@@ -38,25 +38,38 @@
         <p class="status-legend-note"><span class="step step-done" aria-hidden="true">IN</span>Verde claro: etapa já concluída. OP aparece no lugar de AB quando a pessoa chegou com pagamento ou afiliação pendente. Clique numa etapa da tabela para mudar a situação.</p>
       </aside>
     </div>
-    <section class="checkin-control" aria-labelledby="checkin-control-title">
+    <section class="layout-bar" id="layout-bar" aria-label="Organizar o painel">
+      <p id="layout-help" class="layout-help" hidden>Arraste os blocos pela alça ⠿ ou use ↑ e ↓. A ordem vale para todas as contas da coordenação depois de salvar.</p>
+      <div class="layout-actions">
+        <button class="button secondary small" id="layout-edit" type="button">Organizar painel</button>
+        <button class="button small" id="layout-save" type="button" hidden>Salvar ordem</button>
+        <button class="button secondary small" id="layout-cancel" type="button" hidden>Cancelar</button>
+        <button class="button secondary small" id="layout-reset" type="button" hidden>Ordem padrão</button>
+      </div>
+      <p id="layout-status" class="muted" role="status"></p>
+    </section>
+    <section class="dashboard-block" data-block="checkin" data-block-title="Pré-check-in pelo celular" aria-labelledby="checkin-control-title">
+    <div class="checkin-control">
       <div>
         <h2 id="checkin-control-title">Pré-check-in pelo celular</h2>
         <p id="checkin-state" class="checkin-state">—</p>
       </div>
       <button class="button" id="checkin-toggle" type="button" disabled>—</button>
-    </section>
+    </div>
     <p id="misses-alert" class="alert hidden" role="alert"></p>
-    <div class="stats">
+    </section>
+    <div class="stats dashboard-block" data-block="stats" data-block-title="Números do credenciamento">
       <div class="stat"><strong id="stat-total">—</strong><span>Inscritos</span></div>
       <div class="stat"><strong id="stat-prechecked">—</strong><span>Chegaram ao evento</span></div>
       <div class="stat"><strong id="stat-searching">—</strong><span>Em busca</span></div>
       <div class="stat"><strong id="stat-ready">—</strong><span>Prontos no guichê</span></div>
       <div class="stat"><strong id="stat-completed">—</strong><span>Participantes credenciados</span></div>
     </div>
-    <section class="desk-stats" aria-labelledby="desk-stats-title">
+    <section class="desk-stats dashboard-block" data-block="desks" data-block-title="Inscritos por guichê" aria-labelledby="desk-stats-title">
       <h2 id="desk-stats-title">Inscritos por guichê</h2>
       <ul id="desk-stats-list" class="desk-stats-list"></ul>
     </section>
+    <section class="dashboard-block" data-block="shortcuts" data-block-title="Sincronização e atalhos">
     <p id="sync-status" class="muted"></p>
     <div class="dashboard-shortcuts">
       <a href="#dashboard-filter" id="pending-shortcut">Pendências de orientação (<span id="pending-shortcut-count">—</span>)</a>
@@ -64,6 +77,8 @@
       <a href="#google-sheets-title">Configurar backup no Google Sheets</a>
       <a href="#guiches-tools-title">Configurar guichês</a>
     </div>
+    </section>
+    <section class="dashboard-block" data-block="participants" data-block-title="Lista de participantes" aria-label="Lista de participantes">
     <div class="toolbar">
       <input id="dashboard-filter" class="search-input" type="search" placeholder="Buscar por nome, afiliação, guichê, CPF ou e-mail completo" aria-label="Buscar participantes">
       <div class="dashboard-filters">
@@ -153,8 +168,9 @@
         <button id="page-next" class="button secondary small" type="button">Próxima</button>
       </div>
     </nav>
+    </section>
     <div class="dashboard-tools">
-      <div class="card dashboard-tabs">
+      <div class="card dashboard-tabs dashboard-block" data-block="settings" data-block-title="Configurações (abas)">
       <div class="tab-list" role="tablist" aria-label="Configurações do credenciamento">
         <button class="tab" id="participants-tools-title" type="button" role="tab" aria-selected="true" aria-controls="participants-tools">Participantes</button>
         <button class="tab" id="guiches-tools-title" type="button" role="tab" aria-selected="false" aria-controls="guiches-tools" tabindex="-1">Configuração dos guichês</button>
@@ -287,7 +303,7 @@
         <p id="theme-status" class="muted" role="status"></p>
       </section>
       </div>
-      <section class="card dashboard-tool" aria-labelledby="google-sheets-title">
+      <section class="card dashboard-tool dashboard-block" data-block="google-sheets" data-block-title="Backup no Google Sheets" aria-labelledby="google-sheets-title">
         <h2 id="google-sheets-title">Backup no Google Sheets</h2>
         <p>Crie uma planilha na conta que deve receber os dados. Ela continuará sendo uma cópia de segurança; o banco local é a fonte principal.</p>
         <ol class="setup-steps">
@@ -303,6 +319,7 @@
         <p id="google-sheets-status" class="muted" role="status"></p>
       </section>
     </div>
+    <p id="app-version" class="muted app-version"></p>
   </main>
 </body>
 </html>

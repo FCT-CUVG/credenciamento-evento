@@ -209,13 +209,15 @@ class WebTest(CredenciamentoTestCase):
         for _ in range(6):
             self.login("vol1")
         wrong = {"username": "vol2", "password": "wrong-password"}
-        self.assertEqual([self.request("/api/login", wrong)[0] for _ in range(3)], [401, 401, 429])
-        # A conta fica bloqueada mesmo com a senha certa; as outras contas seguem entrando.
-        self.assertEqual(self.request("/api/login", {"username": "vol2", "password": "strong-password"})[0], 429)
+        self.assertEqual([self.request("/api/login", wrong)[0] for _ in range(3)], [401, 401, 401])
+        # A conta fica bloqueada mesmo com a senha certa, sem avisar: a resposta é a de senha errada.
+        status, body, _ = self.request("/api/login", {"username": "vol2", "password": "strong-password"})
+        self.assertEqual((status, body["error"]), (401, "Usuário ou senha incorretos."))
+        # As outras contas seguem entrando.
         self.login("att1")
         # Usuários inexistentes contam do mesmo jeito, sem revelar que não existem.
         missing = {"username": "nobody", "password": "wrong-password"}
-        self.assertEqual([self.request("/api/login", missing)[0] for _ in range(3)], [401, 401, 429])
+        self.assertEqual([self.request("/api/login", missing)[0] for _ in range(2)], [401, 401])
         # Quatro senhas erradas vindas do mesmo IP bloqueiam o IP para qualquer conta.
         self.assertEqual(self.request("/api/login", {"username": "admin", "password": "strong-password"})[0], 429)
 
@@ -232,6 +234,8 @@ class WebTest(CredenciamentoTestCase):
                 with self.assertRaises(ValueError):
                     settings.rate_limit("search")
         self.assertEqual(settings.rate_limit("search_miss"), (20, 600))
+        with patch.dict(settings.LIMITS, search="10/30s"):
+            self.assertEqual(settings.rate_limit("search"), (10, 30))
 
     def test_admin_customizes_names_colors_and_hints_from_the_dashboard(self):
         admin = self.login("admin")

@@ -9,7 +9,7 @@ Sistema local para pré-check-in, busca de kits, atendimento em guichês e acomp
 3. Atendente abre `/fila` e confirma a retirada após entregar o kit. A conta do atendente determina só o guichê inicial: pelo menu superior (**Separação** e **Guichês**), voluntários e atendentes veem e atendem qualquer guichê, inclusive o de prioridade, e também podem trabalhar na separação dos kits. Na tela de um guichê, os cartões mostram o nome, a afiliação e os 3 primeiros dígitos do CPF para conferência; o número do guichê aparece nos cartões apenas em "Todos os guichês" e em "Guichês gerais (sem prioridade)", que junta todos os guichês menos o de prioridade.
 
    **Busca no guichê:** o campo de busca da tela do guichê acha qualquer inscrito, tenha feito o pré-check-in ou não, pelo nome, pela afiliação, pelos 3 primeiros dígitos do CPF, pelo CPF completo ou pelo e-mail. Ele filtra as colunas e mostra, logo abaixo, a lista de encontrados com afiliação, início do CPF, guichê e situação. Com ↑/↓ o guichê escolhe a pessoa e, com Enter (ou o botão), quem ainda não foi credenciado vai direto para a fila de separação, sem confirmação, e passa a ser atendido no guichê da tela, onde está esperando (quem já chegou e ainda aguarda a busca em outro guichê também pode ser trazido para ele): a chegada é registrada e o aviso traz um **Desfazer** para enganos (vale enquanto ninguém assumiu a busca). Inscrições com pendência aparecem destacadas: a chegada é registrada, mas a pessoa só entra na separação depois que a coordenação resolver, e o guichê a orienta a procurar a coordenação.
-4. Qualquer pessoa pode abrir `/painel/resumo`, sem login, para acompanhar inscritos, pessoas que chegaram e participantes credenciados. A coordenação usa `/painel` para ver também as etapas intermediárias, a lista individual, o estado da sincronização, a importação/exportação de participantes e as faixas dos guichês. Pendências (pagamento não confirmado ou afiliação não informada) são tratadas no próprio painel detalhado: o atalho "Pendências de orientação" filtra quem chegou com pendência, o pagamento e a prioridade são alterados na linha, e a afiliação pode ser preenchida ali mesmo. A tabela mostra o país e pode ser filtrada por ele e pela situação de pagamento.
+4. Qualquer pessoa pode abrir `/painel/resumo`, sem login, para acompanhar inscritos, pessoas que chegaram e participantes credenciados. A coordenação usa `/painel` para ver também as etapas intermediárias, a lista individual, o estado da sincronização, a importação/exportação de participantes e as faixas dos guichês. Pendências (pagamento não confirmado ou afiliação não informada) são tratadas no próprio painel detalhado: o atalho "Pendências de orientação" filtra quem chegou com pendência, o pagamento e a prioridade são alterados na linha, e a afiliação pode ser preenchida ali mesmo. A tabela mostra o país e pode ser filtrada por ele e pela situação de pagamento. O botão **Organizar painel** muda a ordem dos blocos (pré-check-in, números, guichês, atalhos, lista de participantes, configurações e Google Sheets), arrastando pela alça ou com ↑ e ↓; a ordem salva vale para todas as contas da coordenação, e **Ordem padrão** volta ao original.
 
    **Alteração em lote:** marque participantes na tabela (um a um, a página inteira ou "Selecionar todos os filtrados") e, na barra acima da tabela, mude de uma vez o pagamento, a situação do credenciamento, o guichê ou a prioridade. Valem as mesmas regras da alteração individual: quem não pode mudar (por exemplo, com pendência de pagamento ou com a busca do kit já começada) fica de fora, continua selecionado e aparece com o motivo.
 
@@ -133,6 +133,10 @@ docker compose cp backup:/backups/credenciamento-AAAAMMDD-HHMMSS.sqlite3 .   # l
 
 **Atualizar para uma nova versão:** confira que há um backup recente e rode `git pull && docker compose build --pull && docker compose up -d` (acrescente o perfil de Caddy que você usa, por exemplo `docker compose --profile https-interno up -d`). O `build --pull` traz as correções de segurança da imagem do Python; para atualizar o Caddy, rode antes `docker compose --profile https-interno pull`. Os dados ficam no volume e o banco é migrado ao iniciar.
 
+**Versão em uso:** o rodapé do painel detalhado mostra a versão montada na imagem, tirada do `git describe` do clone: `v0.1.0` quando o servidor está exatamente numa release, `v0.1.0 + 3 commits (abc1234)` quando está à frente dela, ou só o commit se ainda não houver tag. Por isso a imagem é montada a partir de um clone do repositório (o compose passa o `.git` só para essa leitura; ele não entra na imagem). Para instalar uma release específica em vez do `main`, use `git fetch --tags && git checkout v0.1.0` antes do `build`.
+
+**Publicar uma release:** as versões seguem o [versionamento semântico](https://semver.org/lang/pt-BR/) (`vMAJOR.MINOR.PATCH`). Com o `main` pronto, crie e envie a tag: `git tag -a v0.2.0 -m "v0.2.0" && git push origin v0.2.0`. O workflow `.github/workflows/release.yml` cria a release no GitHub com as notas geradas a partir dos PRs. Uma tag com sufixo, como `v1.0.0-rc.1`, vira pré-release.
+
 **Observações:**
 
 - As faixas dos guichês editadas no painel ficam em `/data/guiches.json`, no volume. Depois da primeira partida, mudar `config/guiches.json` e remontar a imagem não altera as faixas em uso; ajuste-as pelo painel.
@@ -164,7 +168,7 @@ sudo chown -R credenciamento: /opt/credenciamento
 | `CHECKIN_EVENT_CONFIG` | não | Outro caminho para o YAML do evento. |
 | `CHECKIN_RANGES_FILE` | não | Outro caminho para o arquivo de guichês. |
 | `CHECKIN_SHEETS_URL` e `CHECKIN_SHEETS_SECRET` | não | Ativam a cópia no Google Sheets. |
-| `CHECKIN_LIMIT_SEARCH`, `CHECKIN_LIMIT_SEARCH_MISS`, `CHECKIN_LIMIT_LOGIN_IP`, `CHECKIN_LIMIT_LOGIN_USER`, `CHECKIN_ALERT_SEARCH_MISS` | não | Limites de tentativas e alerta do painel, no formato `quantidade/minutos`; veja [Segurança e dados pessoais](#segurança-e-dados-pessoais). |
+| `CHECKIN_LIMIT_SEARCH`, `CHECKIN_LIMIT_SEARCH_MISS`, `CHECKIN_LIMIT_LOGIN_IP`, `CHECKIN_LIMIT_LOGIN_USER`, `CHECKIN_ALERT_SEARCH_MISS` | não | Limites de tentativas e alerta do painel, no formato `quantidade/minutos` (ou `quantidade/segundos` com `s`, como `10/30s`); veja [Segurança e dados pessoais](#segurança-e-dados-pessoais). |
 
 ```sh
 CHECKIN_SESSION_SECRET=cole-aqui-o-segredo-gerado
@@ -408,14 +412,14 @@ O que o sistema faz sozinho:
 | Sessões encerráveis | Ficam no banco: sair encerra a sessão, trocar a senha encerra todas as da conta, e `app.py revoke NOME` encerra sem trocar a senha. Duram 12 horas. |
 | Navegador | Cookie `HttpOnly`, `SameSite=Strict` e `Secure` (com HTTPS), CSRF ligado à sessão, CSP restritiva e HSTS com `CHECKIN_PUBLIC_URL` em `https://`. |
 
-Limites padrão, ajustáveis no ambiente (`quantidade/minutos`):
+Limites padrão, ajustáveis no ambiente (`quantidade/minutos`, ou `quantidade/segundos` com `s` no fim, como `10/30s`):
 
 | Variável | Padrão | O que conta |
 |---|---|---|
 | `CHECKIN_LIMIT_SEARCH` | `60/1` | Todas as buscas da página pública, por IP. |
 | `CHECKIN_LIMIT_SEARCH_MISS` | `20/10` | Buscas sem resultado, por IP. Atingido, o IP espera até a janela passar. |
 | `CHECKIN_LIMIT_LOGIN_IP` | `20/5` | Senhas erradas, por IP. |
-| `CHECKIN_LIMIT_LOGIN_USER` | `10/15` | Senhas erradas, por conta. Quem souber o nome de uma conta consegue bloqueá-la por esse tempo; use nomes que não sejam óbvios. |
+| `CHECKIN_LIMIT_LOGIN_USER` | `10/30s` | Senhas erradas, por conta. O bloqueio é curto e **não aparece na tela**: a conta bloqueada recebe o mesmo "Usuário ou senha incorretos", até com a senha certa. Avise a equipe pessoalmente para esperar 30 segundos e tentar de novo. |
 | `CHECKIN_ALERT_SEARCH_MISS` | `30/10` | Alerta no painel: buscas sem resultado, somando todas as origens. |
 
 Os limites por IP dependem de a aplicação saber o IP de cada pessoa; atrás de um proxy, configure-o como em [Com Docker](#com-docker) e confira pelo log. Os limites ficam na memória e recomeçam quando o serviço reinicia.
@@ -472,4 +476,4 @@ Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `te
 | `report.py` | Lista original de inscrição com a situação de credenciamento de cada pessoa |
 | `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `revoke`, `public-checkin`, `sync`, `backup`, `credenciados` |
 
-No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js`, `dashboard/tools.js` e `dashboard/theme.js` (painel detalhado e identidade visual) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.
+No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js`, `dashboard/tools.js`, `dashboard/layout.js` (ordem dos blocos) e `dashboard/theme.js` (painel detalhado e identidade visual) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.
