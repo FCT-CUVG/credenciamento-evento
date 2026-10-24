@@ -387,14 +387,18 @@ Para criar uma cópia consistente do banco enquanto o serviço está em uso, exe
 
 ### Lista de credenciados com CPF
 
-Como o banco e o backup não têm CPF nem e-mail, a lista de quem foi credenciado com esses dados sai do cruzamento com a lista original de inscrição:
+Como o banco e o backup não têm CPF nem e-mail, a lista de quem foi credenciado com esses dados sai do cruzamento da lista original de inscrição com o backup `.json` baixado no painel. O script `scripts/credenciados.py` é um arquivo só, sem dependências, e pode ser copiado e rodado em qualquer computador com Python 3:
 
 ```bash
-python3 app.py credenciados lista-original.csv credenciados.csv                      # banco atual
-python3 app.py credenciados lista-original.csv credenciados.csv --backup backup.json # backup do painel
+CHECKIN_LOOKUP_SECRET='a-chave-do-servidor' python3 scripts/credenciados.py inscricoes.csv backup.json credenciados.csv
 ```
 
-O arquivo gerado é a lista original (CSV ou JSON, com colunas de nome, e-mail e, de preferência, CPF; os nomes valem sem diferenciar maiúsculas, acentos e hífens, como `Nome`, `E-mail` e `CPF` da exportação do sistema de inscrição), linha por linha, com todas as colunas e o mesmo separador, mais as colunas `credenciado` (`sim`, `não` ou `não encontrado`), `credenciado_em`, `credenciado_por` (quem confirmou a retirada), `buscado_por`, `guiche` e `situacao`. CSV salvo pelo Excel em Windows-1252 e CPF que perdeu os zeros à esquerda também são aceitos. Cada linha é procurada por nome e e-mail, depois pelo CPF e, por fim, pelo e-mail quando só uma pessoa o usa. O cruzamento usa a `CHECKIN_LOOKUP_SECRET` deste servidor: um backup feito com outra chave é recusado. O arquivo gerado tem CPF e e-mail em texto; guarde-o com o mesmo cuidado da lista original.
+A lista original é um CSV (UTF-8 ou Windows-1252, separado por vírgula, ponto e vírgula ou tabulação) com colunas de nome, e-mail e, de preferência, CPF e status; os nomes das colunas valem sem diferenciar maiúsculas, acentos e hífens, como `Nome`, `E-mail`, `CPF` e `Status` da exportação do sistema de inscrição. Cada linha é procurada por nome e e-mail, depois pelo CPF (inclusive o que perdeu os zeros à esquerda no Excel) e, por fim, pelo e-mail quando só uma pessoa o usa. A chave tem de ser a `CHECKIN_LOOKUP_SECRET` do servidor que gerou o backup; com outra, o script para sem gerar nada.
+
+- `credenciados.csv`: a lista original sem as inscrições com status cancelado, com todas as colunas e mais `credenciado`, `credenciado_em`, `credenciado_por` (quem confirmou a retirada), `buscado_por`, `guiche`, `situacao`, `encontrado_por`, `participante_id` e `mesma_pessoa_que_linha` (quando outra linha da lista já caiu na mesma pessoa).
+- `credenciados-pendencias.csv`: inscrições canceladas cuja pessoa foi credenciada (`cancelado_e_credenciado`), pessoas do credenciamento sem inscrição na lista (`fora_da_lista`), inscrições válidas não credenciadas (`nao_credenciado`) e inscrições válidas que não existem no sistema (`nao_encontrado`).
+
+O resumo no terminal conta pessoas, não linhas, e repete os totais do backup (inscritos, chegadas e credenciados) para conferir com o painel. Os arquivos gerados têm CPF e e-mail em texto; guarde-os com o mesmo cuidado da lista original.
 
 O sistema guarda os eventos pendentes em `sheet_outbox` no mesmo banco até o Google Sheets confirmar o lote. Se o serviço ficar fora do ar, a fila de sincronização continua guardada e será tentada novamente a cada 15 segundos. Rode `python3 app.py sync` para forçar uma tentativa. O painel mostra quantas alterações aguardam envio.
 
@@ -473,7 +477,6 @@ Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `te
 | `web/server.py` | Servidor HTTP, páginas estáticas e despacho da API (login, CSRF e papel checados num lugar só) |
 | `web/routes.py` | Tabela de rotas: cada rota declara método, caminho e papéis (`@route`) |
 | `web/public.py` / `staff.py` / `admin.py` | Rotas públicas, da equipe e da coordenação |
-| `report.py` | Lista original de inscrição com a situação de credenciamento de cada pessoa |
-| `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `revoke`, `public-checkin`, `sync`, `backup`, `credenciados` |
+| `bootstrap.py` / `cli.py` | Preparação do banco e comandos `serve`, `import`, `user`, `revoke`, `public-checkin`, `sync`, `backup` |
 
 No navegador, cada página carrega um módulo ES de `static/js/` (sem etapa de build): `common.js` (API, sessão, menu da equipe e utilitários), `public.js` (pré-check-in), `login.js`, `queue.js` (Separação e guichês), `dashboard.js` com `dashboard/table.js`, `dashboard/tools.js`, `dashboard/layout.js` (ordem dos blocos) e `dashboard/theme.js` (painel detalhado e identidade visual) e `summary.js` (painel resumido). O servidor só entrega arquivos `.js` que existem dentro de `static/js/`.
