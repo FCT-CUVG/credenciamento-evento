@@ -2,6 +2,7 @@
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
 import {initBackup} from './dashboard/backup.js';
 import {initBatch, renderBatch} from './dashboard/batch.js';
+import {initConsolidation} from './dashboard/consolidation.js';
 import {initLayout} from './dashboard/layout.js';
 import {initPayment} from './dashboard/payment.js';
 import {changeSort, fillCountryFilter, fillDeskFilter, fillPaymentFilter, loadSort, renderDashboard,
@@ -114,6 +115,15 @@ function searchChanged() {
     }
     firstPage();
   }, 300);
+}
+
+// Mostra na tabela só estas pessoas (ex.: pendências da consolidação); digitar na busca desfaz.
+function showParticipants(label, ids) {
+  $('dashboard-filter').value = label;
+  state.lookup = {text: label, ids: new Set(ids)};
+  for (const id of FILTERS) $(id).value = '';
+  firstPage();
+  document.querySelector('.toolbar').scrollIntoView({block: 'start', behavior: 'smooth'});
 }
 
 function initFilters() {
@@ -273,6 +283,7 @@ if (await requireSession(['admin'])) {
   initTableEvents();
   initBatch(refresh);
   initBackup(refresh);
+  initConsolidation(showParticipants);
   $('checkin-toggle').addEventListener('click', toggleCheckin);
   await Promise.all([refresh(), initTools(refresh), initTheme(), initPayment(refresh)]);
   setInterval(refresh, 10000);
