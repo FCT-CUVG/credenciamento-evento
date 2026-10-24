@@ -37,7 +37,8 @@ ORIGINAL = ("Id;Nome;Status;E-mail;CPF;Obs\n"
             "6;Eva Duas;Pago;eva@example.org;3333333333;\n"
             "7;Fulano;Pago;fulano@example.org;;\n"
             "\n"
-            "9;Gil Souza;Pago;gil@example.org;55555555555;=1+1\n")
+            "9;Gil Souza;Pago;gil@example.org;55555555555;=1+1\n"
+            "Total: 9;;;;;\n")
 
 
 @unittest.skipUnless(NODE, "Node não instalado")
@@ -117,6 +118,8 @@ class ConsolidationTest(CredenciamentoTestCase):
         self.assertEqual((summary["rows"], summary["cancelled"], summary["matched"], summary["matchedCompleted"],
                           summary["repeated"]), (8, 2, 3, 1, 1))
         self.assertEqual(summary["system"], {"total": 7, "arrived": 4, "completed": 4})
+        # The export footer (no name) is not an inscription: it is reported, not counted.
+        self.assertEqual(summary["ignored"], [{"line": 11, "text": "Total: 9"}])
 
     def test_confirmed_match_replaces_the_suggestion(self):
         bruno = next(p for p in self.people() if p["name"] == "Bruno Lima")

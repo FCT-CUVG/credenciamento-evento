@@ -106,8 +106,12 @@ def find(row):
 
 # 3) Cruzamento
 valid, cancelled = [], []  # (linha da planilha, registro, pessoa, como foi encontrada)
+ignored = []  # linhas sem nome (ex.: total ou rodapé da exportação): não são inscrições
 for row in reader:
     if not any(str(v or "").strip() for v in row.values()):
+        continue
+    if not str(row.get(column["nome"]) or "").strip():
+        ignored.append(str(reader.line_num))
         continue
     is_cancelled = column["status"] and normalize(row.get(column["status"])).startswith("cancel")
     (cancelled if is_cancelled else valid).append((reader.line_num, row, *find(row)))
@@ -175,6 +179,8 @@ print(f"Lista original: {len(valid) + len(cancelled)} linhas; {len(cancelled)} c
 print(f"Inscrições válidas: {len(matched)} pessoas encontradas, {sum(p['status'] == 'completed' for p in matched)} "
       f"credenciadas e {count['nao_credenciado']} não credenciadas; {count['nao_encontrado']} não encontradas no "
       f"sistema; {len(valid) - count['nao_encontrado'] - len(matched)} linhas repetem a pessoa de outra linha.")
+if ignored:
+    print(f"Linhas sem nome ignoradas (ex.: total ou rodapé da exportação): {', '.join(ignored)}.")
 print(f"Backup (deve bater com o painel): {len(people)} inscritos; "
       f"{sum(p['status'] != 'registered' for p in people)} chegaram; "
       f"{sum(p['status'] == 'completed' for p in people)} credenciados.")

@@ -391,7 +391,7 @@ Na aba **Consolidação** do painel, a coordenação escolhe a lista original de
 
 Sem a chave, o navegador não compara CPF nem e-mail: cada linha é procurada pelo nome (sem diferenciar maiúsculas e acentos) e, quando a lista tem CPF, pelos 3 primeiros dígitos, que separam homônimos. O formato da lista é o mesmo do script abaixo. O resultado mostra:
 
-- um resumo (linhas, canceladas, pessoas encontradas, credenciadas e não credenciadas) e os totais do credenciamento, para conferir com o painel;
+- um resumo (linhas, canceladas, pessoas encontradas, credenciadas e não credenciadas) e os totais do credenciamento, para conferir com o painel; linhas sem nome (como o total no rodapé da exportação) não contam como inscrição e aparecem no resumo como ignoradas, com o que têm;
 - **cancelados na lista, mas credenciados**; **no credenciamento, mas fora da lista**; **inscrições válidas não credenciadas**; e **inscrições não encontradas**;
 - para quem está no credenciamento, o botão **Mostrar na lista de participantes**, que filtra a tabela por essas pessoas para resolver na linha ou em lote;
 - para as não encontradas, sugestões de pessoas parecidas (nome igual ou duas palavras em comum), com **É a mesma pessoa** para confirmar (vale até recarregar a página);

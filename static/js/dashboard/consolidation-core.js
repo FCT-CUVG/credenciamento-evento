@@ -65,7 +65,8 @@ export function parseCsv(text, delimiter) {
 const columnName = field => normalize(field).replace(/[^a-z0-9]/g, '');
 
 // Separador ponto e vírgula, vírgula ou tabulação: vale o primeiro com as colunas Nome e E-mail.
-// A linha de cada registro é a da planilha (cabeçalho = 1).
+// A linha de cada registro é a da planilha (cabeçalho = 1). Linha sem nome (ex.: total ou rodapé da
+// exportação) não é inscrição: fica em `ignored`, com o que tem, para o resumo avisar.
 export function readList(text) {
   for (const delimiter of [';', ',', '\t']) {
     const [header = [], ...records] = parseCsv(text, delimiter);
@@ -73,14 +74,15 @@ export function readList(text) {
     const column = Object.fromEntries(['nome', 'email', 'cpf', 'status'].map(name =>
       [name, fields.find(field => columnName(field) === name) ?? null]));
     if (!column.nome || !column.email) continue;
-    const rows = [];
+    const rows = [], ignored = [];
     records.forEach((values, index) => {
       if (!values.some(value => value.trim())) return;
       const row = {};
       fields.forEach((field, position) => { row[field] = values[position] ?? ''; });
-      rows.push({line: index + 2, row});
+      if (row[column.nome].trim()) rows.push({line: index + 2, row});
+      else ignored.push({line: index + 2, text: values.map(value => value.trim()).filter(Boolean).join(' · ')});
     });
-    return {fields, column, delimiter, rows};
+    return {fields, column, delimiter, rows, ignored};
   }
   throw new Error('A lista precisa das colunas Nome e E-mail.');
 }
@@ -107,7 +109,7 @@ function suggest(nameKey, prefix, people) {
 
 // manual: Map(linha da planilha -> id do participante) confirmados pela coordenação.
 export function consolidate(text, people, manual = new Map()) {
-  const {fields, column, delimiter, rows} = readList(text);
+  const {fields, column, delimiter, rows, ignored} = readList(text);
   const byId = new Map(people.map(person => [person.id, person]));
   const byName = new Map();
   for (const person of people) {
@@ -193,7 +195,7 @@ export function consolidate(text, people, manual = new Map()) {
   const matched = people.filter(person => firstLine.has(person.id));
   const summary = {rows: valid.length + cancelled.length, cancelled: cancelled.length, valid: valid.length,
     matched: matched.length, matchedCompleted: matched.filter(p => p.status === 'completed').length,
-    repeated: valid.length - count.nao_encontrado - matched.length, hasStatus: Boolean(column.status),
+    repeated: valid.length - count.nao_encontrado - matched.length, ignored, hasStatus: Boolean(column.status),
     hasCpf: Boolean(column.cpf), manual: valid.filter(item => item.foundBy === 'manual').length, issues: count,
     system: {total: people.length, arrived: people.filter(p => p.status !== 'registered').length,
       completed: people.filter(p => p.status === 'completed').length}};

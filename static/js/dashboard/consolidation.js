@@ -90,6 +90,12 @@ export function initConsolidation(showParticipants) {
       `Credenciamento (deve bater com o painel): ${s.system.total} inscritos; ${s.system.arrived} chegaram; ` +
         `${s.system.completed} credenciados.`
     ];
+    if (s.ignored.length) {
+      const shown = s.ignored.slice(0, 5).map(item => `linha ${item.line} (${item.text.slice(0, 60)})`).join('; ');
+      lines.push(`${plural(s.ignored.length, 'linha sem nome ignorada', 'linhas sem nome ignoradas')}, ` +
+        `fora das contas acima (ex.: total ou rodapé da exportação): ${shown}` +
+        `${s.ignored.length > 5 ? ` e mais ${s.ignored.length - 5}` : ''}.`);
+    }
     if (!s.hasStatus) lines.push('A lista não tem coluna Status: nenhuma inscrição foi tratada como cancelada.');
     if (!s.hasCpf) lines.push('A lista não tem coluna CPF: homônimos ficam como não encontrados, com sugestões.');
     const summary = el('ul', 'consolidation-summary');
