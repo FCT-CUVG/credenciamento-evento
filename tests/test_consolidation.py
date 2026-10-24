@@ -37,7 +37,8 @@ ORIGINAL = ("Id;Nome;Status;E-mail;CPF;Obs\n"
             "6;Eva Duas;Pago;eva@example.org;3333333333;\n"
             "7;Fulano;Pago;fulano@example.org;;\n"
             "\n"
-            "9;Gil Souza;Pago;gil@example.org;55555555555;=1+1\n")
+            "9;Gil Souza;Pago;gil@example.org;55555555555;=1+1\n"
+            "Total: 9;;;;;\n")
 
 
 @unittest.skipUnless(NODE, "Node não instalado")
@@ -98,6 +99,10 @@ class ConsolidationTest(CredenciamentoTestCase):
         self.assertEqual((rows[2]["credenciado"], rows[2]["credenciado_por"], rows[2]["buscado_por"]),
                          ("sim", "att2", "vol1"))
         self.assertEqual(rows[3]["mesma_pessoa_que_linha"], "6")
+        # Eva also has a cancelled registration (line 5): she stays in the list, with the line noted.
+        self.assertEqual((rows[2]["linhas_canceladas_mesma_pessoa"], rows[3]["linhas_canceladas_mesma_pessoa"]),
+                         ("5", "5"))
+        self.assertEqual(rows[0]["linhas_canceladas_mesma_pessoa"], "")
         # Homonyms: the CPF start picks the right Gil; formulas are neutralised.
         gil = next(p for p in self.people() if p["cpf_prefix"] == "555")
         self.assertEqual((rows[5]["participante_id"], rows[5]["Obs"]), (gil["id"], "'=1+1"))
@@ -117,6 +122,21 @@ class ConsolidationTest(CredenciamentoTestCase):
         self.assertEqual((summary["rows"], summary["cancelled"], summary["matched"], summary["matchedCompleted"],
                           summary["repeated"]), (8, 2, 3, 1, 1))
         self.assertEqual(summary["system"], {"total": 7, "arrived": 4, "completed": 4})
+        # Counts follow the rows of the downloaded list (Eva is in two rows).
+        self.assertEqual(summary["list"], {"rows": 6, "yes": 2, "no": 2, "notFound": 2})
+        self.assertEqual(summary["statuses"], [["Pago", 6], ["CANCELADO", 1], ["Cancelado", 1]])
+        self.assertEqual(summary["others"], {"total": 4, "completed": 3, "noCpf": 0})
+        # Everyone in the system without a valid row goes to the second list, with the reason.
+        others = {row["nome"] + "/" + row["cpf_inicio"]: (row["credenciado"], row["motivo"])
+                  for row in self.rows(result["othersCsv"])}
+        self.assertEqual(others, {"Bruno Lima/987": ("sim", "não está na lista"),
+                                  "Carla Cancelada/111": ("sim", "inscrição cancelada na lista (linha 4)"),
+                                  "Davi Fora/222": ("sim", "não está na lista"),
+                                  "Gil Souza/666": ("não", "não está na lista")})
+        # Only the credentialed, one row per person (Eva's second row is left out).
+        self.assertEqual([(row["Id"], row["credenciado"]) for row in self.rows(result["completedCsv"])], [("5", "sim")])
+        # The export footer (no name) is not an inscription: it is reported, not counted.
+        self.assertEqual(summary["ignored"], [{"line": 11, "text": "Total: 9"}])
 
     def test_confirmed_match_replaces_the_suggestion(self):
         bruno = next(p for p in self.people() if p["name"] == "Bruno Lima")

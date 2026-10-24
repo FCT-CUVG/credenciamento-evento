@@ -78,38 +78,71 @@ export function initConsolidation(showParticipants) {
   function render(result) {
     const {summary: s, issues} = result, host = $('consolidation-result');
     host.replaceChildren();
-    const lines = [
-      `Lista: ${plural(s.rows, 'linha', 'linhas')}; ${s.cancelled} com status cancelado (fora da lista consolidada); ` +
-        `${s.valid} válidas.`,
-      `Inscrições válidas: ${plural(s.matched, 'pessoa encontrada', 'pessoas encontradas')}, ` +
-        `${plural(s.matchedCompleted, 'credenciada', 'credenciadas')} e ` +
-        `${plural(s.issues.nao_credenciado, 'não credenciada', 'não credenciadas')}; ` +
-        `${plural(s.issues.nao_encontrado, 'não encontrada', 'não encontradas')} no credenciamento; ` +
-        `${plural(s.repeated, 'linha repete', 'linhas repetem')} a pessoa de outra linha` +
-        (s.manual ? `; ${plural(s.manual, 'correspondência confirmada', 'correspondências confirmadas')} à mão.` : '.'),
-      `Credenciamento (deve bater com o painel): ${s.system.total} inscritos; ${s.system.arrived} chegaram; ` +
-        `${s.system.completed} credenciados.`
-    ];
-    if (!s.hasStatus) lines.push('A lista não tem coluna Status: nenhuma inscrição foi tratada como cancelada.');
-    if (!s.hasCpf) lines.push('A lista não tem coluna CPF: homônimos ficam como não encontrados, com sugestões.');
-    const summary = el('ul', 'consolidation-summary');
-    for (const line of lines) summary.append(el('li', '', line));
-
-    const actions = el('div', 'dashboard-tool-actions');
     const button = (label, onClick, className = 'button secondary small') => {
       const node = el('button', className, label);
       node.type = 'button';
       node.addEventListener('click', onClick);
       return node;
     };
+    const buttons = (...nodes) => {
+      const row = el('div', 'consolidation-downloads');
+      row.append(...nodes);
+      return row;
+    };
+    // As duas listas para baixar: a enviada, com o credenciamento de cada linha, e os demais.
+    const part = (title, items, action) => {
+      const box = el('section', 'consolidation-part'), list = el('ul', 'consolidation-summary');
+      for (const item of items.filter(Boolean)) list.append(el('li', '', item));
+      box.append(el('h3', '', title), list, action);
+      return box;
+    };
+    const notes = [];
+    if (s.cancelled) notes.push(`${plural(s.cancelled, 'linha com status cancelado ficou', 'linhas com status cancelado ficaram')} de fora`);
+    if (s.ignored.length) {
+      const shown = s.ignored.slice(0, 5).map(item => `linha ${item.line} (${item.text.slice(0, 60)})`).join('; ');
+      notes.push(`${plural(s.ignored.length, 'linha sem nome foi ignorada', 'linhas sem nome foram ignoradas')} ` +
+        `(ex.: total ou rodapé da exportação): ${shown}${s.ignored.length > 5 ? ` e mais ${s.ignored.length - 5}` : ''}`);
+    }
+    const parts = el('div', 'consolidation-parts');
+    parts.append(
+      part(`Sua lista: ${plural(s.list.rows, 'inscrição', 'inscrições')}`, [
+        `${plural(s.list.yes, 'credenciada', 'credenciadas')}`,
+        `${plural(s.list.no, 'não credenciada', 'não credenciadas')}`,
+        `${plural(s.list.notFound, 'não encontrada', 'não encontradas')} no credenciamento`,
+        s.repeated ? `${plural(s.repeated, 'linha repete', 'linhas repetem')} a pessoa de outra linha` : '',
+        notes.length ? notes.join('; ') + '.' : '',
+        !s.hasStatus ? 'Sem coluna Status: nenhuma inscrição foi tratada como cancelada.'
+          : `Status na lista: ${s.statuses.map(([value, count]) => `${value} (${count})`).join(', ')}. ` +
+            'Só os que começam por “cancel” ficam de fora; quem tem outra linha válida continua na lista.'
+      ], buttons(
+        button('Baixar sua lista com o credenciamento',
+          () => download(`${baseName}-atualizada.csv`, result.listCsv), 'button small'),
+        button(`Baixar só os credenciados (${s.matchedCompleted})`,
+          () => download(`${baseName}-credenciados.csv`, result.completedCsv)))),
+      part(`No credenciamento, fora da sua lista: ${plural(s.others.total, 'pessoa', 'pessoas')}`, [
+        `${plural(s.others.completed, 'credenciada', 'credenciadas')}`,
+        `${plural(s.others.total - s.others.completed, 'não credenciada', 'não credenciadas')}`,
+        s.others.noCpf ? `${s.others.noCpf} sem CPF no cadastro` : '',
+        'Inclui quem tem a inscrição cancelada na sua lista.'
+      ], button('Baixar os demais', () => download(`${baseName}-fora-da-lista.csv`, result.othersCsv), 'button small')));
+
+    const lines = [
+      `Credenciamento (deve bater com o painel): ${s.system.total} inscritos; ${s.system.arrived} chegaram; ` +
+        `${s.system.completed} credenciados.`
+    ];
+    if (s.manual) lines.push(`${plural(s.manual, 'correspondência confirmada', 'correspondências confirmadas')} à mão.`);
+    if (!s.hasCpf) lines.push('A lista não tem coluna CPF: homônimos ficam como não encontrados, com sugestões.');
+    const summary = el('ul', 'consolidation-summary');
+    for (const line of lines) summary.append(el('li', '', line));
+
+    const actions = el('div', 'dashboard-tool-actions');
     actions.append(
-      button('Baixar lista consolidada', () => download(`${baseName}-consolidada.csv`, result.listCsv), 'button small'),
       button('Baixar pendências', () => download(`${baseName}-pendencias.csv`, result.issuesCsv)),
       button('Consolidar de novo', run));
     if (manual.size) {
       actions.append(button(`Desfazer correspondências confirmadas (${manual.size})`, () => { manual.clear(); run(); }));
     }
-    host.append(summary, actions);
+    host.append(parts, summary, actions);
 
     for (const kind of Object.keys(TITLES)) {
       const items = issues.filter(item => item.ocorrencia === kind);

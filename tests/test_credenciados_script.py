@@ -23,7 +23,8 @@ ORIGINAL = ("Id;Nome;Status;Nome para Crachá;E-mail;Receber E-mail;CPF\n"
             "4;Eva Duas;Cancelado;Eva;eva@example.org;Sim;3333333333\n"
             "5;Eva Duas;Pago;Eva;eva@example.org;Sim;3333333333\n"
             "6;Eva Duas;Pago;Eva;eva@example.org;Sim;3333333333\n"
-            "7;Fulano;Pago;Fulano;fulano@example.org;Sim;\n")
+            "7;Fulano;Pago;Fulano;fulano@example.org;Sim;\n"
+            "Total: 7;;;;;;\n")
 
 
 class CredenciadosScriptTest(CredenciamentoTestCase):
@@ -72,6 +73,7 @@ class CredenciadosScriptTest(CredenciamentoTestCase):
         # Eva's two valid rows are the same person: the second one points to the first.
         self.assertEqual((rows[2]["credenciado"], rows[2]["mesma_pessoa_que_linha"]), ("sim", ""))
         self.assertEqual(rows[3]["mesma_pessoa_que_linha"], "6")
+        self.assertEqual(rows[2]["linhas_canceladas_mesma_pessoa"], "5")
         self.assertEqual(rows[4]["credenciado"], "não encontrado")
 
         issues = [(row["ocorrencia"], row["nome"], row["linha_lista"]) for row in self.read("saida-pendencias.csv")]
@@ -82,6 +84,7 @@ class CredenciadosScriptTest(CredenciamentoTestCase):
         # The summary counts people, not rows, and repeats the panel totals from the backup.
         self.assertIn("3 pessoas encontradas, 2 credenciadas e 1 não credenciadas", result.stdout)
         self.assertIn("1 linhas repetem a pessoa de outra linha", result.stdout)
+        self.assertIn("Linhas sem nome ignoradas (ex.: total ou rodapé da exportação): 9.", result.stdout)
         self.assertIn("5 inscritos; 4 chegaram; 4 credenciados", result.stdout)
         self.assertIn("  - Carla Cancelada (credenciado; linha 4)", result.stdout)
         self.assertIn("  - Davi Fora (credenciado)", result.stdout)

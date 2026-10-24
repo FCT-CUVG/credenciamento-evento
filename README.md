@@ -391,11 +391,15 @@ Na aba **Consolidação** do painel, a coordenação escolhe a lista original de
 
 Sem a chave, o navegador não compara CPF nem e-mail: cada linha é procurada pelo nome (sem diferenciar maiúsculas e acentos) e, quando a lista tem CPF, pelos 3 primeiros dígitos, que separam homônimos. O formato da lista é o mesmo do script abaixo. O resultado mostra:
 
-- um resumo (linhas, canceladas, pessoas encontradas, credenciadas e não credenciadas) e os totais do credenciamento, para conferir com o painel;
+- um resumo (linhas, canceladas, pessoas encontradas, credenciadas e não credenciadas) e os totais do credenciamento, para conferir com o painel; linhas sem nome (como o total no rodapé da exportação) não contam como inscrição e aparecem no resumo como ignoradas, com o que têm;
 - **cancelados na lista, mas credenciados**; **no credenciamento, mas fora da lista**; **inscrições válidas não credenciadas**; e **inscrições não encontradas**;
 - para quem está no credenciamento, o botão **Mostrar na lista de participantes**, que filtra a tabela por essas pessoas para resolver na linha ou em lote;
 - para as não encontradas, sugestões de pessoas parecidas (nome igual ou duas palavras em comum), com **É a mesma pessoa** para confirmar (vale até recarregar a página);
-- os arquivos `…-consolidada.csv` e `…-pendencias.csv`, com as mesmas colunas do script (em `encontrado_por`: `nome`, `nome+cpf_inicio` ou `manual`), gerados no próprio navegador.
+- duas listas para baixar, geradas no próprio navegador:
+  - **Baixar sua lista com o credenciamento** (`…-atualizada.csv`): a lista enviada, sem as inscrições canceladas e as linhas sem nome, com todas as colunas originais e mais `credenciado` (`sim`, `não` ou `não encontrado`), `credenciado_em`, `credenciado_por` e as demais colunas do script (em `encontrado_por`: `nome`, `nome+cpf_inicio` ou `manual`);
+  - **Baixar só os credenciados** (`…-credenciados.csv`): as mesmas colunas, só com as linhas da lista cuja pessoa foi credenciada, uma por pessoa;
+  - **Baixar os demais** (`…-fora-da-lista.csv`): quem está no credenciamento sem inscrição válida na lista (inclusive cadastrados sem CPF ou e-mail, e quem tem a inscrição cancelada), com `nome`, `nome_cracha`, `afiliacao`, `pais`, `cpf_inicio`, `guiche`, `credenciado`, `credenciado_em`, `credenciado_por`, `situacao` e `motivo`;
+- e, à parte, `…-pendencias.csv`, com as mesmas colunas do arquivo de pendências do script.
 
 Quem mudou de nome num dos sistemas aparece como não encontrado e fora da lista até a correspondência ser confirmada. Para cruzar também por CPF e e-mail completos, use o script abaixo, fora do servidor.
 
@@ -409,7 +413,7 @@ CHECKIN_LOOKUP_SECRET='a-chave-do-servidor' python3 scripts/credenciados.py insc
 
 A lista original é um CSV (UTF-8 ou Windows-1252, separado por vírgula, ponto e vírgula ou tabulação) com colunas de nome, e-mail e, de preferência, CPF e status; os nomes das colunas valem sem diferenciar maiúsculas, acentos e hífens, como `Nome`, `E-mail`, `CPF` e `Status` da exportação do sistema de inscrição. Cada linha é procurada por nome e e-mail, depois pelo CPF (inclusive o que perdeu os zeros à esquerda no Excel) e, por fim, pelo e-mail quando só uma pessoa o usa. A chave tem de ser a `CHECKIN_LOOKUP_SECRET` do servidor que gerou o backup; com outra, o script para sem gerar nada.
 
-- `credenciados.csv`: a lista original sem as inscrições com status cancelado, com todas as colunas e mais `credenciado`, `credenciado_em`, `credenciado_por` (quem confirmou a retirada), `buscado_por`, `guiche`, `situacao`, `encontrado_por`, `participante_id` e `mesma_pessoa_que_linha` (quando outra linha da lista já caiu na mesma pessoa).
+- `credenciados.csv`: a lista original sem as inscrições com status cancelado, com todas as colunas e mais `credenciado`, `credenciado_em`, `credenciado_por` (quem confirmou a retirada), `buscado_por`, `guiche`, `situacao`, `encontrado_por`, `participante_id` e `mesma_pessoa_que_linha` (quando outra linha da lista já caiu na mesma pessoa) e `linhas_canceladas_mesma_pessoa` (inscrições canceladas da mesma pessoa, que ficam de fora). Cada linha da lista é uma inscrição com o status atual dela: quem tem uma inscrição cancelada e outra válida (paga, pendente etc.) continua na lista pela válida, qualquer que seja a ordem das linhas. Só os status que começam por "cancel" contam como cancelados.
 - `credenciados-pendencias.csv`: inscrições canceladas cuja pessoa foi credenciada (`cancelado_e_credenciado`), pessoas do credenciamento sem inscrição na lista (`fora_da_lista`), inscrições válidas não credenciadas (`nao_credenciado`) e inscrições válidas que não existem no sistema (`nao_encontrado`).
 
 O resumo no terminal conta pessoas, não linhas, e repete os totais do backup (inscritos, chegadas e credenciados) para conferir com o painel. Os arquivos gerados têm CPF e e-mail em texto; guarde-os com o mesmo cuidado da lista original.

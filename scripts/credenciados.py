@@ -7,7 +7,8 @@ Uso:
 Gera dois arquivos:
   saida.csv             lista original SEM as inscrições canceladas, com todas as colunas e mais:
                         credenciado, credenciado_em, credenciado_por, buscado_por, guiche, situacao,
-                        encontrado_por, participante_id, mesma_pessoa_que_linha
+                        encontrado_por, participante_id, mesma_pessoa_que_linha,
+                        linhas_canceladas_mesma_pessoa (outra inscrição da mesma pessoa, cancelada)
   saida-pendencias.csv  uma linha por ocorrência:
                         - cancelado_e_credenciado: inscrição cancelada na lista, mas a pessoa foi
                           credenciada (e não tem outra inscrição válida na lista)
@@ -106,15 +107,25 @@ def find(row):
 
 # 3) Cruzamento
 valid, cancelled = [], []  # (linha da planilha, registro, pessoa, como foi encontrada)
+ignored = []  # linhas sem nome (ex.: total ou rodapé da exportação): não são inscrições
 for row in reader:
     if not any(str(v or "").strip() for v in row.values()):
+        continue
+    if not str(row.get(column["nome"]) or "").strip():
+        ignored.append(str(reader.line_num))
         continue
     is_cancelled = column["status"] and normalize(row.get(column["status"])).startswith("cancel")
     (cancelled if is_cancelled else valid).append((reader.line_num, row, *find(row)))
 
+# Cada linha é uma inscrição com o status atual dela, então a ordem não importa: quem tem alguma linha
+# válida está na lista, e as linhas canceladas da mesma pessoa só ficam anotadas.
+cancelled_lines = {}  # participante -> linhas canceladas da planilha que caíram nele
+for line, row, person, _ in cancelled:
+    if person:
+        cancelled_lines.setdefault(person["id"], []).append(str(line))
 first_line = {}  # participante -> primeira linha válida da planilha em que apareceu
 extra = ["credenciado", "credenciado_em", "credenciado_por", "buscado_por", "guiche", "situacao",
-         "encontrado_por", "participante_id", "mesma_pessoa_que_linha"]
+         "encontrado_por", "participante_id", "mesma_pessoa_que_linha", "linhas_canceladas_mesma_pessoa"]
 issues = []  # (ocorrência, nome, linha na lista, situação, credenciado em, por, guichê, participante)
 with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
     writer = csv.DictWriter(f, fieldnames=fields + extra, delimiter=delimiter, extrasaction="ignore")
@@ -135,16 +146,13 @@ with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
                           buscado_por=person.get("claimed_by") or "", guiche=person["guiche"],
                           situacao=SITUACAO.get(person["status"], person["status"]), encontrado_por=found_by,
                           participante_id=person["id"],
-                          mesma_pessoa_que_linha=first_line[person["id"]] if repeated else "")
+                          mesma_pessoa_que_linha=first_line[person["id"]] if repeated else "",
+                          linhas_canceladas_mesma_pessoa=", ".join(cancelled_lines.get(person["id"], [])))
             if not completed and not repeated:
                 issues.append(("nao_credenciado", name, str(line), values["situacao"], "", "",
                                person["guiche"], person["id"]))
         writer.writerow({k: safe(v) for k, v in values.items()})
 
-cancelled_lines = {}  # participante -> linhas canceladas da planilha que caíram nele
-for line, row, person, _ in cancelled:
-    if person:
-        cancelled_lines.setdefault(person["id"], []).append(str(line))
 for person in people:
     if person["id"] in first_line:
         continue  # tem inscrição válida na lista
@@ -175,6 +183,8 @@ print(f"Lista original: {len(valid) + len(cancelled)} linhas; {len(cancelled)} c
 print(f"Inscrições válidas: {len(matched)} pessoas encontradas, {sum(p['status'] == 'completed' for p in matched)} "
       f"credenciadas e {count['nao_credenciado']} não credenciadas; {count['nao_encontrado']} não encontradas no "
       f"sistema; {len(valid) - count['nao_encontrado'] - len(matched)} linhas repetem a pessoa de outra linha.")
+if ignored:
+    print(f"Linhas sem nome ignoradas (ex.: total ou rodapé da exportação): {', '.join(ignored)}.")
 print(f"Backup (deve bater com o painel): {len(people)} inscritos; "
       f"{sum(p['status'] != 'registered' for p in people)} chegaram; "
       f"{sum(p['status'] == 'completed' for p in people)} credenciados.")
