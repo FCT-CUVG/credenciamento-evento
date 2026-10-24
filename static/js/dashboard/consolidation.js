@@ -120,7 +120,9 @@ export function initConsolidation(showParticipants) {
         button('Baixar sua lista com o credenciamento',
           () => download(`${baseName}-atualizada.csv`, result.listCsv), 'button small'),
         button(`Baixar só os credenciados (${s.matchedCompleted})`,
-          () => download(`${baseName}-credenciados.csv`, result.completedCsv)))),
+          () => download(`${baseName}-credenciados.csv`, result.completedCsv)),
+        button('Só os credenciados, com as colunas da sua lista',
+          () => download(`${baseName}-credenciados-colunas-originais.csv`, result.completedOriginalCsv)))),
       part(`No credenciamento, fora da sua lista: ${plural(s.others.total, 'pessoa', 'pessoas')}`, [
         `${plural(s.others.completed, 'credenciada', 'credenciadas')}`,
         `${plural(s.others.total - s.others.completed, 'não credenciada', 'não credenciadas')}`,

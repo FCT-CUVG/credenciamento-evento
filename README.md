@@ -398,6 +398,7 @@ Cada linha é procurada como no script abaixo, pelo nome + e-mail, pelo CPF (inc
 - duas listas para baixar, geradas no próprio navegador:
   - **Baixar sua lista com o credenciamento** (`…-atualizada.csv`): a lista enviada, sem as inscrições canceladas e as linhas sem nome, com todas as colunas originais e mais `credenciado` (`sim`, `não` ou `não encontrado`), `credenciado_em`, `credenciado_por` e as demais colunas do script (em `encontrado_por`: `nome`, `nome+cpf_inicio` ou `manual`);
   - **Baixar só os credenciados** (`…-credenciados.csv`): as mesmas colunas, só com as linhas da lista cuja pessoa foi credenciada, uma por pessoa;
+  - **Só os credenciados, com as colunas da sua lista** (`…-credenciados-colunas-originais.csv`): as mesmas linhas, só com as colunas da lista enviada, sem as do credenciamento;
   - **Baixar os demais** (`…-fora-da-lista.csv`): quem está no credenciamento sem inscrição válida na lista (inclusive cadastrados sem CPF ou e-mail, e quem tem a inscrição cancelada), com `nome`, `nome_cracha`, `afiliacao`, `pais`, `cpf_inicio`, `guiche`, `credenciado`, `credenciado_em`, `credenciado_por`, `situacao` e `motivo`;
 - e, à parte, `…-pendencias.csv`, com as mesmas colunas do arquivo de pendências do script.
 

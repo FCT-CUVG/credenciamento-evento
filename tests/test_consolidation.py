@@ -145,6 +145,10 @@ class ConsolidationTest(CredenciamentoTestCase):
                                   "Gil Souza/666": ("não", "não está na lista")})
         # Only the credentialed, one row per person (Eva's second row is left out).
         self.assertEqual([(row["Id"], row["credenciado"]) for row in self.rows(result["completedCsv"])], [("5", "sim")])
+        # The same people with only the columns of the list that was sent.
+        original = self.rows(result["completedOriginalCsv"])
+        self.assertEqual(list(original[0]), ["Id", "Nome", "Status", "E-mail", "CPF", "Obs"])
+        self.assertEqual([row["Id"] for row in original], ["5"])
         # The export footer (no name) is not an inscription: it is reported, not counted.
         self.assertEqual(summary["ignored"], [{"line": 11, "text": "Total: 9"}])
 

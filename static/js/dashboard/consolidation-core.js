@@ -246,6 +246,8 @@ export function consolidate(text, people, manual = new Map(), keyMatches = null)
   const completedRows = output.filter(values => values.credenciado === 'sim' && !values.mesma_pessoa_que_linha);
   return {summary, issues, listCsv: toCsv([...fields, ...EXTRA], output, delimiter),
     completedCsv: toCsv([...fields, ...EXTRA], completedRows, delimiter),
+    // Os mesmos credenciados só com as colunas da lista enviada, sem as do credenciamento.
+    completedOriginalCsv: toCsv(fields, completedRows, delimiter),
     othersCsv: toCsv(OTHER_FIELDS, others, delimiter), issuesCsv: toCsv(ISSUE_FIELDS, issues, delimiter)};
 }
 
