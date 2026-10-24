@@ -15,16 +15,17 @@ from support import CredenciamentoTestCase
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "credenciados.py"
 
 # Exportação do sistema de inscrição salva pelo Excel: Windows-1252, cabeçalhos próprios ("Nome",
-# "E-mail", "CPF", "Status" de pagamento) e CPF guardado como número, sem o zero à esquerda.
-ORIGINAL = ("Id;Nome;Status;Nome para Crachá;E-mail;Receber E-mail;CPF\n"
-            "1;Ána Silva;Pago;Ana;ana@example.org;Sim;123.456.789-01\n"
-            "2;Bruno Lima Júnior;Pago;Bruno;outro@example.org;Não;98765432100\n"
-            "3;Carla Cancelada;CANCELADO;Carla;carla@example.org;Sim;11111111111\n"
-            "4;Eva Duas;Cancelado;Eva;eva@example.org;Sim;3333333333\n"
-            "5;Eva Duas;Pago;Eva;eva@example.org;Sim;3333333333\n"
-            "6;Eva Duas;Pago;Eva;eva@example.org;Sim;3333333333\n"
-            "7;Fulano;Pago;Fulano;fulano@example.org;Sim;\n"
-            "Total: 7;;;;;;\n")
+# "E-mail", "CPF", "Status" de pagamento, data da última movimentação em dois formatos), CPF guardado
+# como número, sem o zero à esquerda, e o total no rodapé.
+ORIGINAL = ("Id;Nome;Status;Nome para Crachá;E-mail;Receber E-mail;CPF;Data da última movimentação\n"
+            "1;Ána Silva;Pago;Ana;ana@example.org;Sim;123.456.789-01;18/10/2026\n"
+            "2;Bruno Lima Júnior;Pago;Bruno;outro@example.org;Não;98765432100;18/10/2026\n"
+            "3;Carla Cancelada;CANCELADO;Carla;carla@example.org;Sim;11111111111;18/10/2026\n"
+            "4;Eva Duas;Pago;Eva;eva@example.org;Sim;3333333333;15/10/2026 09:00\n"
+            "5;Eva Duas;Cancelado;Eva;eva@example.org;Sim;3333333333;20/10/2026 08:30\n"
+            "6;Eva Duas;Pago;Eva;eva@example.org;Sim;3333333333;2026-10-17\n"
+            "7;Fulano;Pago;Fulano;fulano@example.org;Sim;;\n"
+            "Total: 7;;;;;;;\n")
 
 
 class CredenciadosScriptTest(CredenciamentoTestCase):
@@ -57,37 +58,36 @@ class CredenciadosScriptTest(CredenciamentoTestCase):
         content = (self.folder / name).read_text(encoding="utf-8-sig")
         return list(csv.DictReader(io.StringIO(content), delimiter=";"))
 
-    def test_cancelled_rows_are_left_out_and_every_issue_is_listed(self):
+    def test_each_person_counts_by_the_row_of_the_latest_movement(self):
         result = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
         rows = self.read("saida.csv")
-        # Cancelled rows are not in the final list; the original columns come back untouched.
-        self.assertEqual([row["Id"] for row in rows], ["1", "2", "5", "6", "7"])
-        self.assertEqual(list(rows[0])[:7], ["Id", "Nome", "Status", "Nome para Crachá", "E-mail", "Receber E-mail",
-                                              "CPF"])
+        # Every row stays, whatever the status; the footer is not an inscription.
+        self.assertEqual([row["Id"] for row in rows], ["1", "2", "3", "4", "5", "6", "7"])
+        self.assertEqual(list(rows[0])[:8], ["Id", "Nome", "Status", "Nome para Crachá", "E-mail", "Receber E-mail",
+                                              "CPF", "Data da última movimentação"])
         self.assertEqual(rows[0]["CPF"], "123.456.789-01")
         self.assertEqual((rows[0]["credenciado"], rows[0]["situacao"]), ("não", "inscrito (não chegou)"))
         # Bruno changed name and e-mail: found by CPF.
         self.assertEqual((rows[1]["credenciado"], rows[1]["credenciado_por"], rows[1]["buscado_por"],
                           rows[1]["encontrado_por"]), ("sim", "att1", "vol1", "cpf"))
-        # Eva's two valid rows are the same person: the second one points to the first.
-        self.assertEqual((rows[2]["credenciado"], rows[2]["mesma_pessoa_que_linha"]), ("sim", ""))
-        self.assertEqual(rows[3]["mesma_pessoa_que_linha"], "6")
-        self.assertEqual(rows[2]["linhas_canceladas_mesma_pessoa"], "5")
-        self.assertEqual(rows[4]["credenciado"], "não encontrado")
+        # Carla is cancelled in the list, but credentialed: the status does not matter.
+        self.assertEqual(rows[2]["credenciado"], "sim")
+        # Eva's three rows are one person, counted by line 6 (latest movement, though cancelled).
+        self.assertEqual([row["linha_mais_recente"] for row in rows[3:6]], ["6", "", "6"])
+        self.assertEqual(rows[6]["credenciado"], "não encontrado")
 
         issues = [(row["ocorrencia"], row["nome"], row["linha_lista"]) for row in self.read("saida-pendencias.csv")]
-        self.assertEqual(issues, [("cancelado_e_credenciado", "Carla Cancelada", "4"),
-                                  ("fora_da_lista", "Davi Fora", ""),
+        self.assertEqual(issues, [("fora_da_lista", "Davi Fora", ""),
                                   ("nao_credenciado", "Ána Silva", "2"),
                                   ("nao_encontrado", "Fulano", "8")])
         # The summary counts people, not rows, and repeats the panel totals from the backup.
-        self.assertIn("3 pessoas encontradas, 2 credenciadas e 1 não credenciadas", result.stdout)
-        self.assertIn("1 linhas repetem a pessoa de outra linha", result.stdout)
-        self.assertIn("Linhas sem nome ignoradas (ex.: total ou rodapé da exportação): 9.", result.stdout)
+        self.assertIn("7 linhas, 5 pessoas; vale a linha da última movimentação (coluna Data da última movimentação)",
+                      result.stdout)
+        self.assertIn("4 encontradas, 3 credenciadas e 1 não credenciadas; 1 não encontradas", result.stdout)
         self.assertIn("5 inscritos; 4 chegaram; 4 credenciados", result.stdout)
-        self.assertIn("  - Carla Cancelada (credenciado; linha 4)", result.stdout)
         self.assertIn("  - Davi Fora (credenciado)", result.stdout)
+        self.assertNotIn("ignorada", result.stdout)
 
     def test_backup_made_with_another_key_is_refused(self):
         result = self.run_script(b"another-lookup-secret-longer-than-32-characters")
