@@ -1,21 +1,20 @@
-// Aba "Consolidação": lista original de inscrição (ex.: ECOS) x credenciamento, só neste navegador.
-// O arquivo fica na memória da aba: não vai ao servidor nem a localStorage; recarregar apaga.
+// Aba "Consolidação": lista original de inscrição (ex.: ECOS) x credenciamento, neste navegador.
+// O arquivo fica na memória da aba (nem localStorage); recarregar apaga. Ao servidor vão só a linha,
+// o CPF e o e-mail de cada inscrição, para comparar com as chaves, e ele não guarda nada.
 import {$, api, el} from '../common.js';
-import {consolidate, decode, keyEntries} from './consolidation-core.js';
+import {consolidate, decode, keyEntries, readList} from './consolidation-core.js';
 
 const TITLES = {
-  cancelado_e_credenciado: 'Cancelados na lista, mas credenciados',
   fora_da_lista: 'No credenciamento, mas fora da lista',
-  nao_credenciado: 'Inscrições válidas não credenciadas',
-  nao_encontrado: 'Inscrições válidas não encontradas no credenciamento'
+  nao_credenciado: 'Pessoas da lista não credenciadas',
+  nao_encontrado: 'Pessoas da lista não encontradas no credenciamento'
 };
 const HELP = {
-  cancelado_e_credenciado: 'A inscrição está cancelada na lista, mas a pessoa retirou o kit.',
-  fora_da_lista: 'Estão no credenciamento, mas em nenhuma inscrição válida da lista. Quem mudou de nome ' +
-    'num dos sistemas aparece aqui e também em “não encontradas”: confirme a correspondência lá.',
-  nao_credenciado: 'A inscrição é válida e a pessoa ainda não retirou o kit. Para resolver, mostre-as na lista ' +
+  fora_da_lista: 'Estão no credenciamento, mas em nenhuma linha da lista. Quem tem CPF e e-mail diferentes ' +
+    'nos dois sistemas aparece aqui e também em “não encontradas”: confirme a correspondência lá.',
+  nao_credenciado: 'A pessoa está na lista e ainda não retirou o kit. Para resolver, mostre-as na lista ' +
     'de participantes e mude a situação na linha ou em lote.',
-  nao_encontrado: 'Nenhuma pessoa do credenciamento com esse nome (e início de CPF). Se uma sugestão for a mesma ' +
+  nao_encontrado: 'Nenhuma pessoa do credenciamento com esse CPF, e-mail ou nome. Se uma sugestão for a mesma ' +
     'pessoa, confirme; se a pessoa não existe no credenciamento, inclua-a pela aba Participantes.'
 };
 
@@ -69,7 +68,8 @@ export function initConsolidation(showParticipants) {
       const {people} = await api('/api/consolidation/people');
       // Só linha, CPF e e-mail vão ao servidor, que compara com as chaves e não guarda nada.
       const {matches} = await api('/api/consolidation/match', {entries: keyEntries(text)});
-      render(consolidate(text, people, manual, new Map(matches.map(match => [match.line, match]))));
+      render(consolidate(text, people, manual, new Map(matches.map(match => [match.line, match])),
+        $('consolidation-movement').value || null));
       status('');
     } catch (err) {
       $('consolidation-result').hidden = true;
@@ -98,36 +98,29 @@ export function initConsolidation(showParticipants) {
       box.append(el('h3', '', title), list, action);
       return box;
     };
-    const notes = [];
-    if (s.cancelled) notes.push(`${plural(s.cancelled, 'linha com status cancelado ficou', 'linhas com status cancelado ficaram')} de fora`);
-    if (s.ignored.length) {
-      const shown = s.ignored.slice(0, 5).map(item => `linha ${item.line} (${item.text.slice(0, 60)})`).join('; ');
-      notes.push(`${plural(s.ignored.length, 'linha sem nome foi ignorada', 'linhas sem nome foram ignoradas')} ` +
-        `(ex.: total ou rodapé da exportação): ${shown}${s.ignored.length > 5 ? ` e mais ${s.ignored.length - 5}` : ''}`);
-    }
     const parts = el('div', 'consolidation-parts');
     parts.append(
-      part(`Sua lista: ${plural(s.list.rows, 'inscrição', 'inscrições')}`, [
+      part(`Sua lista: ${plural(s.list.people, 'pessoa', 'pessoas')} em ${plural(s.list.rows, 'linha', 'linhas')}`, [
         `${plural(s.list.yes, 'credenciada', 'credenciadas')}`,
         `${plural(s.list.no, 'não credenciada', 'não credenciadas')}`,
         `${plural(s.list.notFound, 'não encontrada', 'não encontradas')} no credenciamento`,
-        s.repeated ? `${plural(s.repeated, 'linha repete', 'linhas repetem')} a pessoa de outra linha` : '',
-        notes.length ? notes.join('; ') + '.' : '',
-        !s.hasStatus ? 'Sem coluna Status: nenhuma inscrição foi tratada como cancelada.'
-          : `Status na lista: ${s.statuses.map(([value, count]) => `${value} (${count})`).join(', ')}. ` +
-            'Só os que começam por “cancel” ficam de fora; quem tem outra linha válida continua na lista.'
+        s.list.rows > s.list.people ? 'Quem está em mais de uma linha conta pela linha da última movimentação ' +
+          (s.dateColumn ? `(coluna “${s.dateColumn}”)` : '(sem coluna de data: a última linha do arquivo)') +
+          '; o status da lista não muda nada.' : '',
+        // Só avisa se nenhuma data da coluna escolhida pôde ser lida.
+        s.dateColumn && s.undated === s.list.rows ? `Nenhuma data da coluna “${s.dateColumn}” pôde ser lida; ` +
+          'escolha outra coluna.' : ''
       ], buttons(
         button('Baixar sua lista com o credenciamento',
           () => download(`${baseName}-atualizada.csv`, result.listCsv), 'button small'),
-        button(`Baixar só os credenciados (${s.matchedCompleted})`,
+        button(`Baixar só os credenciados (${s.list.yes})`,
           () => download(`${baseName}-credenciados.csv`, result.completedCsv)),
         button('Só os credenciados, com as colunas da sua lista',
           () => download(`${baseName}-credenciados-colunas-originais.csv`, result.completedOriginalCsv)))),
       part(`No credenciamento, fora da sua lista: ${plural(s.others.total, 'pessoa', 'pessoas')}`, [
         `${plural(s.others.completed, 'credenciada', 'credenciadas')}`,
         `${plural(s.others.total - s.others.completed, 'não credenciada', 'não credenciadas')}`,
-        s.others.noCpf ? `${s.others.noCpf} sem CPF no cadastro` : '',
-        'Inclui quem tem a inscrição cancelada na sua lista.'
+        s.others.noCpf ? `${s.others.noCpf} sem CPF no cadastro` : ''
       ], button('Baixar os demais', () => download(`${baseName}-fora-da-lista.csv`, result.othersCsv), 'button small')));
 
     const lines = [
@@ -185,12 +178,25 @@ export function initConsolidation(showParticipants) {
     host.hidden = false;
   }
 
-  $('consolidation-file').addEventListener('change', () => {
+  // Ao escolher o arquivo, lê o cabeçalho para oferecer a coluna da última movimentação.
+  const movement = $('consolidation-movement');
+  $('consolidation-file').addEventListener('change', async () => {
     text = null;
     manual.clear();
     $('consolidation-result').hidden = true;
     status('');
+    movement.replaceChildren(new Option('Nenhuma: vale a última linha do arquivo', ''));
+    const file = $('consolidation-file').files[0];
+    if (!file || file.size > 20_000_000) return;
+    try {
+      const list = readList(decode(await file.arrayBuffer()));
+      for (const field of list.fields) movement.append(new Option(field, field));
+      movement.value = list.movement || '';
+    } catch (err) {
+      status(err.message, true);
+    }
   });
+  movement.addEventListener('change', () => { if (!$('consolidation-result').hidden) run(); });
   $('consolidation-form').addEventListener('submit', async event => {
     event.preventDefault();
     const file = $('consolidation-file').files[0];

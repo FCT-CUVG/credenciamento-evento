@@ -5,17 +5,19 @@ Uso:
   CHECKIN_LOOKUP_SECRET='a-chave-do-servidor' python3 credenciados.py inscricoes.csv backup.json saida.csv
 
 Gera dois arquivos:
-  saida.csv             lista original SEM as inscrições canceladas, com todas as colunas e mais:
+  saida.csv             lista original com todas as linhas e colunas e mais:
                         credenciado, credenciado_em, credenciado_por, buscado_por, guiche, situacao,
-                        encontrado_por, participante_id, mesma_pessoa_que_linha,
-                        linhas_canceladas_mesma_pessoa (outra inscrição da mesma pessoa, cancelada)
-  saida-pendencias.csv  uma linha por ocorrência:
-                        - cancelado_e_credenciado: inscrição cancelada na lista, mas a pessoa foi
-                          credenciada (e não tem outra inscrição válida na lista)
-                        - fora_da_lista: está no sistema de credenciamento, mas não em nenhuma
-                          inscrição da lista original
-                        - nao_credenciado: inscrição válida cuja pessoa não retirou o kit
-                        - nao_encontrado: inscrição válida que não existe no sistema de credenciamento
+                        encontrado_por, participante_id, linha_mais_recente
+  saida-pendencias.csv  uma linha por pessoa:
+                        - fora_da_lista: está no sistema de credenciamento, mas em nenhuma linha da lista
+                        - nao_credenciado: está na lista e não retirou o kit
+                        - nao_encontrado: está na lista e não existe no sistema de credenciamento
+
+O status da inscrição na lista (pago, cancelado...) não importa. A mesma pessoa (mesmo participante
+ou, sem ele, mesmo CPF ou e-mail) em várias linhas conta pela linha da última movimentação: a coluna
+de data com "última movimentação", "atualização" ou "alteração" no nome (dd/mm/aaaa ou aaaa-mm-dd,
+com hora opcional) ou, sem ela, a última linha do arquivo. Nas outras linhas, linha_mais_recente
+indica qual vale.
 
 Só usa a biblioteca padrão do Python.
 """
@@ -79,22 +81,44 @@ for delimiter in (";", ",", "\t"):
     reader = csv.DictReader(io.StringIO(content, newline=""), delimiter=delimiter)
     reader.fieldnames = fields = [f.strip() for f in reader.fieldnames or []]
     column = {name: next((f for f in fields if re.sub(r"[^a-z0-9]", "", normalize(f)) == name), None)
-              for name in ("nome", "email", "cpf", "status")}
+              for name in ("nome", "email", "cpf")}
     if column["nome"] and column["email"]:
         break
 else:
     sys.exit("A lista precisa das colunas Nome e E-mail.")
-if not column["status"]:
-    print("Aviso: a lista não tem coluna Status; nenhuma inscrição será tratada como cancelada.")
+
+
+def column_with(*words):
+    return next((f for f in fields if any(w in re.sub(r"[^a-z0-9]", "", normalize(f)) for w in words)), None)
+
+
+movement = (column_with("ultimamovimentacao", "ultimaatualizacao", "ultimaalteracao")
+            or column_with("movimentacao", "atualizacao", "atualizadoem", "alteracao", "modificacao"))
+
+
+def moment(value):
+    """Data e hora em dd/mm/aaaa [hh:mm[:ss]] ou aaaa-mm-dd [hh:mm[:ss]], para comparar; None se ilegível."""
+    text = str(value or "").strip()
+    match = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})(?!\d)(?:[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?", text)
+    if match:
+        day, month, year, hour, minute, second = match.groups()
+        year = 2000 + int(year) if len(year) == 2 else int(year)
+        return (year, int(month), int(day), int(hour or 0), int(minute or 0), int(second or 0))
+    match = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?", text)
+    if match:
+        return tuple(int(part or 0) for part in match.groups())
+    return None
+
+
+def cpf_of(row):
+    cpf = re.sub(r"\D", "", str(row.get(column["cpf"]) or "")) if column["cpf"] else ""
+    return cpf.zfill(11) if 9 <= len(cpf) < 11 else cpf  # o Excel tira os zeros à esquerda
 
 
 def find(row):
     """Pessoa do credenciamento para uma linha da lista: nome + e-mail, depois CPF, depois e-mail
     (se só uma pessoa o usa). Devolve (pessoa ou None, como foi encontrada)."""
-    email = str(row.get(column["email"]) or "").strip()
-    cpf = re.sub(r"\D", "", str(row.get(column["cpf"]) or "")) if column["cpf"] else ""
-    if 9 <= len(cpf) < 11:
-        cpf = cpf.zfill(11)  # o Excel tira os zeros à esquerda
+    email, cpf = str(row.get(column["email"]) or "").strip(), cpf_of(row)
     mail = key("email", email.casefold()) if email else ""
     person = by_name_email.get((normalize(row.get(column["nome"])), mail))
     if person:
@@ -105,69 +129,69 @@ def find(row):
     return (same_email[0], "email") if len(same_email) == 1 else (None, "")
 
 
-# 3) Cruzamento
-valid, cancelled = [], []  # (linha da planilha, registro, pessoa, como foi encontrada)
-ignored = []  # linhas sem nome (ex.: total ou rodapé da exportação): não são inscrições
+# 3) Cruzamento: linhas da mesma pessoa e a da última movimentação de cada uma
+items = []  # (linha da planilha, registro, pessoa, como foi encontrada, grupo, data)
 for row in reader:
     if not any(str(v or "").strip() for v in row.values()):
         continue
     if not str(row.get(column["nome"]) or "").strip():
-        ignored.append(str(reader.line_num))
-        continue
-    is_cancelled = column["status"] and normalize(row.get(column["status"])).startswith("cancel")
-    (cancelled if is_cancelled else valid).append((reader.line_num, row, *find(row)))
+        continue  # linha sem nome (ex.: total ou rodapé da exportação): não é inscrição
+    person, found_by = find(row)
+    cpf, email = cpf_of(row), str(row.get(column["email"]) or "").strip().lower()
+    group = ("p", person["id"]) if person else ("c", cpf) if len(cpf) == 11 else ("e", email) if email \
+        else ("l", reader.line_num)
+    items.append((reader.line_num, row, person, found_by, group, moment(row.get(movement)) if movement else None))
 
-# Cada linha é uma inscrição com o status atual dela, então a ordem não importa: quem tem alguma linha
-# válida está na lista, e as linhas canceladas da mesma pessoa só ficam anotadas.
-cancelled_lines = {}  # participante -> linhas canceladas da planilha que caíram nele
-for line, row, person, _ in cancelled:
-    if person:
-        cancelled_lines.setdefault(person["id"], []).append(str(line))
-first_line = {}  # participante -> primeira linha válida da planilha em que apareceu
+
+def recency(item):
+    # Sem data legível, conta como mais antiga; empate, vale a de baixo.
+    return (item[5] is not None, item[5] or (), item[0])
+
+
+latest = {}
+for item in items:
+    if item[4] not in latest or recency(item) > recency(latest[item[4]]):
+        latest[item[4]] = item
+
 extra = ["credenciado", "credenciado_em", "credenciado_por", "buscado_por", "guiche", "situacao",
-         "encontrado_por", "participante_id", "mesma_pessoa_que_linha", "linhas_canceladas_mesma_pessoa"]
+         "encontrado_por", "participante_id", "linha_mais_recente"]
 issues = []  # (ocorrência, nome, linha na lista, situação, credenciado em, por, guichê, participante)
 with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
     writer = csv.DictWriter(f, fieldnames=fields + extra, delimiter=delimiter, extrasaction="ignore")
     writer.writeheader()
-    for line, row, person, found_by in valid:
+    for item in items:
+        line, row, person, found_by, group, _ = item
+        main = latest[group]
         values = {k: row.get(k, "") for k in fields}
+        values["linha_mais_recente"] = "" if main is item else main[0]
         name = row.get(column["nome"], "")
         if person is None:
             values["credenciado"] = "não encontrado"
-            issues.append(("nao_encontrado", name, str(line), "", "", "", "", ""))
+            if main is item:
+                issues.append(("nao_encontrado", name, str(line), "", "", "", "", ""))
         else:
             completed = person["status"] == "completed"
-            repeated = person["id"] in first_line
-            first_line.setdefault(person["id"], line)
             values.update(credenciado="sim" if completed else "não",
                           credenciado_em=(person.get("completed_at") or "") if completed else "",
                           credenciado_por=delivered_by.get(person["id"], "") if completed else "",
                           buscado_por=person.get("claimed_by") or "", guiche=person["guiche"],
                           situacao=SITUACAO.get(person["status"], person["status"]), encontrado_por=found_by,
-                          participante_id=person["id"],
-                          mesma_pessoa_que_linha=first_line[person["id"]] if repeated else "",
-                          linhas_canceladas_mesma_pessoa=", ".join(cancelled_lines.get(person["id"], [])))
-            if not completed and not repeated:
+                          participante_id=person["id"])
+            if not completed and main is item:
                 issues.append(("nao_credenciado", name, str(line), values["situacao"], "", "",
                                person["guiche"], person["id"]))
         writer.writerow({k: safe(v) for k, v in values.items()})
 
+in_list = {item[2]["id"] for item in items if item[2]}
 for person in people:
-    if person["id"] in first_line:
-        continue  # tem inscrição válida na lista
+    if person["id"] in in_list:
+        continue
     completed = person["status"] == "completed"
-    details = (SITUACAO.get(person["status"], person["status"]),
-               (person.get("completed_at") or "") if completed else "",
-               delivered_by.get(person["id"], "") if completed else "", person["guiche"], person["id"])
-    if person["id"] in cancelled_lines:
-        if completed:
-            issues.append(("cancelado_e_credenciado", person["name"], ",".join(cancelled_lines[person["id"]]),
-                           *details))
-    else:
-        issues.append(("fora_da_lista", person["name"], "", *details))
+    issues.append(("fora_da_lista", person["name"], "", SITUACAO.get(person["status"], person["status"]),
+                   (person.get("completed_at") or "") if completed else "",
+                   delivered_by.get(person["id"], "") if completed else "", person["guiche"], person["id"]))
 
-order = ("cancelado_e_credenciado", "fora_da_lista", "nao_credenciado", "nao_encontrado")
+order = ("fora_da_lista", "nao_credenciado", "nao_encontrado")
 issues.sort(key=lambda issue: (order.index(issue[0]), normalize(issue[1])))
 with open(issues_path, "w", newline="", encoding="utf-8-sig") as f:
     writer = csv.writer(f, delimiter=delimiter)
@@ -177,23 +201,19 @@ with open(issues_path, "w", newline="", encoding="utf-8-sig") as f:
 
 # 4) Resumo
 count = {kind: sum(issue[0] == kind for issue in issues) for kind in order}
-matched = [p for p in people if p["id"] in first_line]
-print(f"Lista original: {len(valid) + len(cancelled)} linhas; {len(cancelled)} canceladas (fora da lista final); "
-      f"{len(valid)} válidas.")
-print(f"Inscrições válidas: {len(matched)} pessoas encontradas, {sum(p['status'] == 'completed' for p in matched)} "
+matched = [p for p in people if p["id"] in in_list]
+print(f"Lista original: {len(items)} linhas, {len(latest)} pessoas; vale a linha da última movimentação "
+      f"({'coluna ' + movement if movement else 'sem coluna de data: a última linha do arquivo'}).")
+print(f"Pessoas da lista: {len(matched)} encontradas, {sum(p['status'] == 'completed' for p in matched)} "
       f"credenciadas e {count['nao_credenciado']} não credenciadas; {count['nao_encontrado']} não encontradas no "
-      f"sistema; {len(valid) - count['nao_encontrado'] - len(matched)} linhas repetem a pessoa de outra linha.")
-if ignored:
-    print(f"Linhas sem nome ignoradas (ex.: total ou rodapé da exportação): {', '.join(ignored)}.")
+      f"sistema.")
 print(f"Backup (deve bater com o painel): {len(people)} inscritos; "
       f"{sum(p['status'] != 'registered' for p in people)} chegaram; "
       f"{sum(p['status'] == 'completed' for p in people)} credenciados.")
-for kind, title in (("cancelado_e_credenciado", "Cancelados na lista, mas credenciados"),
-                    ("fora_da_lista", "No credenciamento, mas fora da lista original")):
-    print(f"\n{title}: {count[kind]}")
-    for issue in issues:
-        if issue[0] == kind:
-            print(f"  - {issue[1]} ({issue[3]}{'; linha ' + issue[2] if issue[2] else ''})")
+print(f"\nNo credenciamento, mas fora da lista original: {count['fora_da_lista']}")
+for issue in issues:
+    if issue[0] == "fora_da_lista":
+        print(f"  - {issue[1]} ({issue[3]})")
 print(f"\nNão credenciados: {count['nao_credenciado']}; não encontrados: {count['nao_encontrado']} "
       f"(nomes no arquivo de pendências).")
 print(f"Arquivos: {output_path} e {issues_path}")

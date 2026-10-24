@@ -21,27 +21,29 @@ RUNNER = f"""
 import {{consolidate, decode, keyEntries}} from {json.dumps(CORE.as_uri())};
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
-const {{content, people, manual, matches}} = JSON.parse(input);
+const {{content, people, manual, matches, movement}} = JSON.parse(input);
 const text = decode(Buffer.from(content, 'base64'));
 const keyMatches = matches && new Map(matches.map(match => [match.line, match]));
-process.stdout.write(JSON.stringify(people ? consolidate(text, people, new Map(manual), keyMatches)
+process.stdout.write(JSON.stringify(people ? consolidate(text, people, new Map(manual), keyMatches, movement)
   : keyEntries(text)));
 """
 
 # Exportação do sistema de inscrição salva pelo Excel: Windows-1252, cabeçalhos próprios, CPF como
-# número sem o zero à esquerda e um campo com aspas, separador e quebra de linha. As linhas contam
-# como no Excel: a quebra dentro do campo não abre outra linha; a linha vazia, sim.
-ORIGINAL = ("Id;Nome;Status;E-mail;CPF;Obs\n"
-            '1;Ána Silva;Pago;ana@example.org;123.456.789-01;"diz ""oi""; e\nquebra"\n'
-            "2;Bruno Lima Júnior;Pago;outro@example.org;98765432100;\n"
-            "3;Carla Cancelada;CANCELADO;carla@example.org;11111111111;\n"
-            "4;Eva Duas;Cancelado;eva@example.org;3333333333;\n"
-            "5;Eva Duas;Pago;eva@example.org;3333333333;\n"
-            "6;Eva Duas;Pago;eva@example.org;3333333333;\n"
-            "7;Fulano;Pago;fulano@example.org;;\n"
+# número sem o zero à esquerda, datas em dois formatos e um campo com aspas, separador e quebra de
+# linha. As linhas contam como no Excel: a quebra dentro do campo não abre outra linha; a vazia, sim.
+# O status não importa: a Eva vale pela linha 6 (cancelada, mas a última movimentação).
+ORIGINAL = ("Id;Nome;Status;E-mail;CPF;Última movimentação;Obs\n"
+            '1;Ána Silva;Pago;ana@example.org;123.456.789-01;18/10/2026 10:00;"diz ""oi""; e\nquebra"\n'
+            "2;Bruno Lima Júnior;Pago;outro@example.org;98765432100;18/10/2026 10:00;\n"
+            "3;Carla Cancelada;CANCELADO;carla@example.org;11111111111;18/10/2026 10:00;\n"
+            "4;Eva Duas;Pago;eva@example.org;3333333333;15/10/2026 09:00;\n"
+            "5;Eva Duas;Cancelado;eva@example.org;3333333333;20/10/2026 08:30;\n"
+            "6;Eva Duas;Pago;eva@example.org;3333333333;2026-10-17;\n"
+            "7;Fulano;Pago;fulano@example.org;;;\n"
+            "8;Fulano;Cancelado;fulano@example.org;;19/10/2026;\n"
             "\n"
-            "9;Gil Souza;Pago;gil@example.org;55555555555;=1+1\n"
-            "Total: 9;;;;;\n")
+            "10;Gil Souza;Pago;gil@example.org;55555555555;;=1+1\n"
+            "Total: 10;;;;;;\n")
 
 
 @unittest.skipUnless(NODE, "Node não instalado")
@@ -73,9 +75,10 @@ class ConsolidationTest(CredenciamentoTestCase):
                                 capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
 
-    def run_core(self, manual=(), matches=None):
-        """Sem matches: só pelo nome e início do CPF. Com matches: o que o servidor devolveu."""
-        return self.node(people=self.people(), manual=list(manual), matches=matches)
+    def run_core(self, manual=(), matches=None, **movement):
+        """Sem matches: só pelo nome e início do CPF. Com matches: o que o servidor devolveu.
+        movement=None: sem coluna de data (vale a ordem do arquivo)."""
+        return self.node(people=self.people(), manual=list(manual), matches=matches, **movement)
 
     def match(self, entries, user="admin"):
         cookie, csrf = self.admin if user == "admin" else self.login(user)
@@ -95,62 +98,59 @@ class ConsolidationTest(CredenciamentoTestCase):
         code, _, _ = self.request("/api/consolidation/people", cookie=self.login("att1")[0])
         self.assertEqual(code, 401)
 
-    def test_list_is_matched_by_name_and_cpf_start(self):
+    def test_each_person_counts_by_the_row_of_the_latest_movement(self):
         result = self.run_core()
         rows = self.rows(result["listCsv"])
-        # Cancelled rows are left out; the original columns come back untouched (quoted field included).
-        self.assertEqual([row["Id"] for row in rows], ["1", "2", "5", "6", "7", "9"])
-        self.assertEqual(list(rows[0])[:6], ["Id", "Nome", "Status", "E-mail", "CPF", "Obs"])
+        # Every row stays, cancelled ones included; the original columns come back untouched.
+        self.assertEqual([row["Id"] for row in rows], ["1", "2", "3", "4", "5", "6", "7", "8", "10"])
+        self.assertEqual(list(rows[0])[:7], ["Id", "Nome", "Status", "E-mail", "CPF", "Última movimentação", "Obs"])
         self.assertEqual(rows[0]["Obs"], 'diz "oi"; e\nquebra')
         self.assertEqual((rows[0]["credenciado"], rows[0]["encontrado_por"]), ("não", "nome+cpf_inicio"))
-        # Bruno changed his name in the list: not found, with the system's Bruno as suggestion.
-        self.assertEqual(rows[1]["credenciado"], "não encontrado")
-        # Eva's CPF lost the leading zero; her two valid rows are the same person.
-        self.assertEqual((rows[2]["credenciado"], rows[2]["credenciado_por"], rows[2]["buscado_por"]),
-                         ("sim", "att2", "vol1"))
-        self.assertEqual(rows[3]["mesma_pessoa_que_linha"], "6")
-        # Eva also has a cancelled registration (line 5): she stays in the list, with the line noted.
-        self.assertEqual((rows[2]["linhas_canceladas_mesma_pessoa"], rows[3]["linhas_canceladas_mesma_pessoa"]),
-                         ("5", "5"))
-        self.assertEqual(rows[0]["linhas_canceladas_mesma_pessoa"], "")
+        # Carla is cancelled in the list but was credentialed: the status does not matter.
+        self.assertEqual((rows[2]["credenciado"], rows[2]["linha_mais_recente"]), ("sim", ""))
+        # Eva: three rows; the latest movement is line 6 (cancelled), the others point to it.
+        self.assertEqual([(r["credenciado"], r["credenciado_por"], r["linha_mais_recente"]) for r in rows[3:6]],
+                         [("sim", "att2", "6"), ("sim", "att2", ""), ("sim", "att2", "6")])
+        # Fulano is not in the system: his two rows are one person, counted by line 9 (the dated one).
+        self.assertEqual([(r["credenciado"], r["linha_mais_recente"]) for r in rows[6:8]],
+                         [("não encontrado", "9"), ("não encontrado", "")])
         # Homonyms: the CPF start picks the right Gil; formulas are neutralised.
         gil = next(p for p in self.people() if p["cpf_prefix"] == "555")
-        self.assertEqual((rows[5]["participante_id"], rows[5]["Obs"]), (gil["id"], "'=1+1"))
+        self.assertEqual((rows[8]["participante_id"], rows[8]["Obs"]), (gil["id"], "'=1+1"))
 
         issues = [(i["ocorrencia"], i["nome"], i["linha_lista"]) for i in result["issues"]]
-        self.assertEqual(issues, [("cancelado_e_credenciado", "Carla Cancelada", "4"),
-                                  ("fora_da_lista", "Bruno Lima", ""), ("fora_da_lista", "Davi Fora", ""),
+        self.assertEqual(issues, [("fora_da_lista", "Bruno Lima", ""), ("fora_da_lista", "Davi Fora", ""),
                                   ("fora_da_lista", "Gil Souza", ""),
-                                  ("nao_credenciado", "Ána Silva", "2"), ("nao_credenciado", "Gil Souza", "10"),
-                                  ("nao_encontrado", "Bruno Lima Júnior", "3"), ("nao_encontrado", "Fulano", "8")])
+                                  ("nao_credenciado", "Ána Silva", "2"), ("nao_credenciado", "Gil Souza", "11"),
+                                  ("nao_encontrado", "Bruno Lima Júnior", "3"), ("nao_encontrado", "Fulano", "9")])
         not_found = {i["nome"]: [p["name"] for p in i["sugestoes"]] for i in result["issues"]
                      if i["ocorrencia"] == "nao_encontrado"}
         self.assertEqual(not_found, {"Bruno Lima Júnior": ["Bruno Lima"], "Fulano": []})
         self.assertEqual([row["ocorrencia"] for row in self.rows(result["issuesCsv"])],
                          [kind for kind, _, _ in issues])
         summary = result["summary"]
-        self.assertEqual((summary["rows"], summary["cancelled"], summary["matched"], summary["matchedCompleted"],
-                          summary["repeated"]), (8, 2, 3, 1, 1))
+        self.assertEqual(summary["list"], {"rows": 9, "people": 6, "yes": 2, "no": 2, "notFound": 2})
+        self.assertEqual((summary["dateColumn"], summary["undated"]), ("Última movimentação", 2))
+        self.assertEqual(summary["others"], {"total": 3, "completed": 2, "noCpf": 0})
         self.assertEqual(summary["system"], {"total": 7, "arrived": 4, "completed": 4})
-        # Counts follow the rows of the downloaded list (Eva is in two rows).
-        self.assertEqual(summary["list"], {"rows": 6, "yes": 2, "no": 2, "notFound": 2})
-        self.assertEqual(summary["statuses"], [["Pago", 6], ["CANCELADO", 1], ["Cancelado", 1]])
-        self.assertEqual(summary["others"], {"total": 4, "completed": 3, "noCpf": 0})
-        # Everyone in the system without a valid row goes to the second list, with the reason.
-        others = {row["nome"] + "/" + row["cpf_inicio"]: (row["credenciado"], row["motivo"])
-                  for row in self.rows(result["othersCsv"])}
-        self.assertEqual(others, {"Bruno Lima/987": ("sim", "não está na lista"),
-                                  "Carla Cancelada/111": ("sim", "inscrição cancelada na lista (linha 4)"),
-                                  "Davi Fora/222": ("sim", "não está na lista"),
-                                  "Gil Souza/666": ("não", "não está na lista")})
-        # Only the credentialed, one row per person (Eva's second row is left out).
-        self.assertEqual([(row["Id"], row["credenciado"]) for row in self.rows(result["completedCsv"])], [("5", "sim")])
-        # The same people with only the columns of the list that was sent.
+        # Everyone in the system without a row in the list goes to the second list.
+        others = [(row["nome"], row["cpf_inicio"], row["credenciado"]) for row in self.rows(result["othersCsv"])]
+        self.assertEqual(others, [("Bruno Lima", "987", "sim"), ("Davi Fora", "222", "sim"), ("Gil Souza", "666", "não")])
+        # Only the credentialed, on the row of their latest movement (with and without our columns).
+        self.assertEqual([row["Id"] for row in self.rows(result["completedCsv"])], ["3", "5"])
         original = self.rows(result["completedOriginalCsv"])
-        self.assertEqual(list(original[0]), ["Id", "Nome", "Status", "E-mail", "CPF", "Obs"])
-        self.assertEqual([row["Id"] for row in original], ["5"])
+        self.assertEqual(list(original[0]), ["Id", "Nome", "Status", "E-mail", "CPF", "Última movimentação", "Obs"])
+        self.assertEqual([row["Id"] for row in original], ["3", "5"])
         # The export footer (no name) is not an inscription: it is reported, not counted.
-        self.assertEqual(summary["ignored"], [{"line": 11, "text": "Total: 9"}])
+        self.assertEqual(summary["ignored"], [{"line": 12, "text": "Total: 10"}])
+        self.assertEqual(len(rows), 9)
+
+    def test_without_a_date_column_the_last_row_counts(self):
+        result = self.run_core(movement=None)
+        rows = self.rows(result["listCsv"])
+        self.assertEqual([r["linha_mais_recente"] for r in rows[3:6]], ["7", "7", ""])
+        self.assertEqual(result["summary"]["dateColumn"], None)
+        self.assertEqual([row["Id"] for row in self.rows(result["completedCsv"])], ["3", "6"])
 
     def test_confirmed_match_replaces_the_suggestion(self):
         bruno = next(p for p in self.people() if p["name"] == "Bruno Lima")
@@ -168,6 +168,7 @@ class ConsolidationTest(CredenciamentoTestCase):
         # Name and the other columns stay in the browser; the CPF that lost its leading zero is fixed.
         self.assertEqual(sorted({key for entry in entries for key in entry}), ["cpf", "email", "line"])
         self.assertIn({"line": 6, "cpf": "03333333333", "email": "eva@example.org"}, entries)
+        self.assertEqual(len(entries), 9)  # every row has CPF or e-mail
         code, body, _ = self.match(entries)
         self.assertEqual(code, 200)
         bruno, eva = self.pid_by_email("bruno@example.org"), self.pid_by_email("eva@example.org")
