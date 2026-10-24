@@ -1,7 +1,10 @@
-// Tabela do painel detalhado: linhas, etapas da situação, afiliação editável, filtros e cards por guichê.
+// Tabela do painel detalhado: linhas, etapas da situação, afiliação editável, filtros, ordenação e cards por guichê.
 import {$, el, movementTime, searchKey, statusNames} from '../common.js';
 
-export const state = {items: [], page: 1, affiliationEditing: null, lookup: null, paymentOptions: [], selected: new Set()};
+export const state = {
+  items: [], page: 1, affiliationEditing: null, lookup: null, paymentOptions: [], selected: new Set(),
+  sort: {key: 'name', dir: 'asc'}
+};
 
 const hasPending = item =>
   !['registered', 'completed'].includes(item.status) && (!item.paid || !item.affiliation.trim());
@@ -140,20 +143,89 @@ function paymentMatches(item, filter) {
   return searchKey(item.payment_status) === searchKey(filter.slice(2));
 }
 
+// Ordenação pelo cabeçalho: cada coluna diz o valor comparado e o sentido do primeiro clique.
+// Valores vazios ficam sempre no fim; o nome desempata.
+const collator = new Intl.Collator('pt-BR', {sensitivity: 'base', numeric: true});
+const statusOrder = ['registered', 'guidance', 'prechecked', 'searching', 'ready', 'completed'];
+const timeValue = item => {
+  const time = new Date(statusTime(item)).getTime();
+  return Number.isNaN(time) ? null : time;
+};
+const sortColumns = {
+  name: {value: item => item.name, first: 'asc'},
+  badge: {value: item => item.badge_name, first: 'asc'},
+  affiliation: {value: item => item.affiliation.trim(), first: 'asc'},
+  country: {value: item => item.country, first: 'asc'},
+  payment: {value: item => item.payment_status, first: 'asc'},
+  priority: {value: item => Number(item.priority), first: 'desc'},
+  desk: {value: item => item.guiche, first: 'asc'},
+  status: {value: item => statusOrder.indexOf(statusKey(item)), first: 'asc'},
+  movement: {value: timeValue, first: 'desc'}
+};
+const empty = value => value === null || value === undefined || value === '';
+const compareValues = (a, b) => typeof a === 'number' && typeof b === 'number' ? a - b : collator.compare(a, b);
+const SORT_STORAGE = 'painel:ordenacao';
+
+function sortItems(items) {
+  const column = sortColumns[state.sort.key];
+  if (!column) return items;
+  const sign = state.sort.dir === 'desc' ? -1 : 1;
+  return items.map(item => ({item, value: column.value(item)})).sort((a, b) => {
+    if (empty(a.value) || empty(b.value)) {
+      if (empty(a.value) !== empty(b.value)) return empty(a.value) ? 1 : -1;
+    } else {
+      const order = compareValues(a.value, b.value);
+      if (order) return sign * order;
+    }
+    return collator.compare(a.item.name, b.item.name);
+  }).map(entry => entry.item);
+}
+
+// Mostra no cabeçalho a coluna e o sentido da ordenação atual.
+export function renderSortHeaders() {
+  for (const th of document.querySelectorAll('th[data-sort]')) {
+    const active = th.dataset.sort === state.sort.key, button = th.querySelector('.sort-button');
+    const label = button.textContent;
+    th.setAttribute('aria-sort', active ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+    th.classList.toggle('sorted', active);
+    button.dataset.dir = active ? state.sort.dir : '';
+    button.title = active
+      ? `Ordenado por ${label} (${state.sort.dir === 'asc' ? 'crescente' : 'decrescente'}). Clique para inverter.`
+      : `Ordenar por ${label}`;
+  }
+}
+
+// Primeiro clique usa o sentido natural da coluna; clicar de novo inverte. A escolha fica salva neste navegador.
+export function changeSort(key) {
+  if (!sortColumns[key]) return;
+  const dir = state.sort.key === key ? (state.sort.dir === 'asc' ? 'desc' : 'asc') : sortColumns[key].first;
+  state.sort = {key, dir};
+  try { localStorage.setItem(SORT_STORAGE, JSON.stringify(state.sort)); } catch { /* sem armazenamento */ }
+  renderSortHeaders();
+}
+
+export function loadSort() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE));
+    if (sortColumns[saved?.key] && ['asc', 'desc'].includes(saved.dir)) state.sort = {key: saved.key, dir: saved.dir};
+  } catch { /* sem armazenamento */ }
+  renderSortHeaders();
+}
+
 export function filteredItems() {
   const raw = $('dashboard-filter').value, text = searchKey(raw), status = $('status-filter').value;
   // CPF ou e-mail completo: vale a resposta do servidor (state.lookup), não o texto das linhas.
   const lookup = state.lookup?.text === raw ? state.lookup.ids : null;
   const priority = $('priority-filter').value, paid = $('payment-filter').value, desk = $('desk-filter').value;
   const country = $('country-filter').value;
-  return state.items.filter(item =>
+  return sortItems(state.items.filter(item =>
     (!status || statusKey(item) === status) &&
     (!priority || item.priority === (priority === '1')) &&
     paymentMatches(item, paid) &&
     (!country || (country === '__none' ? !item.country : item.country === country)) &&
     (!desk || item.guiche === desk) &&
     (lookup ? lookup.has(item.id)
-      : searchKey(`${item.name} ${item.badge_name} ${item.affiliation} ${item.country} ${item.guiche}`).includes(text)));
+      : searchKey(`${item.name} ${item.badge_name} ${item.affiliation} ${item.country} ${item.guiche}`).includes(text))));
 }
 
 export function renderDashboard() {

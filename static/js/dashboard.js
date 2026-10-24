@@ -5,8 +5,8 @@ import {initBatch, renderBatch} from './dashboard/batch.js';
 import {initConsolidation} from './dashboard/consolidation.js';
 import {initLayout} from './dashboard/layout.js';
 import {initPayment} from './dashboard/payment.js';
-import {fillCountryFilter, fillDeskFilter, fillPaymentFilter, renderDashboard, renderDashboardKeepingFocus,
-  renderDeskStats, state} from './dashboard/table.js';
+import {changeSort, fillCountryFilter, fillDeskFilter, fillPaymentFilter, loadSort, renderDashboard,
+  renderDashboardKeepingFocus, renderDeskStats, state} from './dashboard/table.js';
 import {initTheme} from './dashboard/theme.js';
 import {initTabs, initTools} from './dashboard/tools.js';
 
@@ -152,6 +152,14 @@ function initFilters() {
   };
   $('page-prev').addEventListener('click', () => turnPage(-1));
   $('page-next').addEventListener('click', () => turnPage(1));
+  // Clicar no nome da coluna ordena a tabela; clicar de novo inverte o sentido.
+  loadSort();
+  document.querySelector('.table-wrap thead').addEventListener('click', event => {
+    const button = event.target.closest('.sort-button');
+    if (!button) return;
+    changeSort(button.closest('th').dataset.sort);
+    firstPage();
+  });
 }
 
 const findItem = id => state.items.find(candidate => candidate.id === id);
