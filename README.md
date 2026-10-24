@@ -398,9 +398,9 @@ Quando a mesma pessoa está em várias linhas, vale a linha da **última movimen
 - para quem está no credenciamento, o botão **Mostrar na lista de participantes**, que filtra a tabela por essas pessoas para resolver na linha ou em lote;
 - para as não encontradas, sugestões de pessoas parecidas (nome igual ou duas palavras em comum), com **É a mesma pessoa** para confirmar (vale até recarregar a página);
 - as listas para baixar, geradas no próprio navegador:
-  - **Baixar sua lista com o credenciamento** (`…-atualizada.csv`): todas as linhas da lista enviada, com todas as colunas originais e mais `credenciado` (`sim`, `não`, `não encontrado` ou `cancelada`), `credenciado_em`, `credenciado_por`, `buscado_por`, `guiche`, `situacao`, `encontrado_por`, `participante_id` e `linha_mais_recente` (nas outras linhas da mesma pessoa, a linha que vale);
-  - **Baixar só os credenciados** (`…-credenciados.csv`): as mesmas colunas, uma linha por pessoa credenciada, a da última movimentação;
-  - **Só os credenciados, com as colunas da sua lista** (`…-credenciados-colunas-originais.csv`): as mesmas linhas, só com as colunas da lista enviada;
+  - **Baixar credenciados** (`…-credenciados.csv`): só quem foi credenciado e tem linha na lista enviada, uma linha por pessoa (a da última movimentação), só com as colunas da lista;
+  - **Credenciados, com os dados do credenciamento** (`…-credenciados-com-dados.csv`): as mesmas linhas, com as colunas da lista e as do credenciamento (abaixo);
+  - **Baixar lista completa (todas as linhas)** (`…-atualizada.csv`), abaixo dos dois quadros: todas as linhas da lista enviada, com todas as colunas originais e mais `credenciado` (`sim`, `não`, `não encontrado` ou `cancelada`), `credenciado_em`, `credenciado_por`, `buscado_por`, `guiche`, `situacao`, `encontrado_por`, `participante_id` e `linha_mais_recente` (nas outras linhas da mesma pessoa, a linha que vale);
   - **Baixar os demais** (`…-fora-da-lista.csv`): quem está no credenciamento e em nenhuma linha da lista (inclusive cadastrados sem CPF ou e-mail), com `nome`, `nome_cracha`, `afiliacao`, `pais`, `cpf_inicio`, `guiche`, `credenciado`, `credenciado_em`, `credenciado_por` e `situacao`;
 - e, à parte, `…-pendencias.csv`, com as mesmas colunas do arquivo de pendências do script.
 
