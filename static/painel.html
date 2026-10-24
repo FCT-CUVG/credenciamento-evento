@@ -76,6 +76,7 @@
       <a href="#participants-tools-title">Importar dados de participantes</a>
       <a href="#google-sheets-title">Configurar backup no Google Sheets</a>
       <a href="#guiches-tools-title">Configurar guichês</a>
+      <a href="#consolidation-tools-title">Consolidar com a lista de inscrição</a>
     </div>
     </section>
     <section class="dashboard-block" data-block="participants" data-block-title="Lista de participantes" aria-label="Lista de participantes">
@@ -176,6 +177,7 @@
         <button class="tab" id="guiches-tools-title" type="button" role="tab" aria-selected="false" aria-controls="guiches-tools" tabindex="-1">Configuração dos guichês</button>
         <button class="tab" id="payment-tools-title" type="button" role="tab" aria-selected="false" aria-controls="payment-tools" tabindex="-1">Pagamento</button>
         <button class="tab" id="backup-tools-title" type="button" role="tab" aria-selected="false" aria-controls="backup-tools" tabindex="-1">Backup e limpeza</button>
+        <button class="tab" id="consolidation-tools-title" type="button" role="tab" aria-selected="false" aria-controls="consolidation-tools" tabindex="-1">Consolidação</button>
         <button class="tab" id="theme-tools-title" type="button" role="tab" aria-selected="false" aria-controls="theme-tools" tabindex="-1">Identidade visual</button>
       </div>
       <section class="dashboard-tool" id="participants-tools" role="tabpanel" aria-labelledby="participants-tools-title">
@@ -258,6 +260,16 @@
           <button class="button small danger" id="clear-participants" type="button" disabled>Baixar backup e limpar</button>
         </div>
         <p id="backup-status" class="muted" role="status"></p>
+      </section>
+      <section class="dashboard-tool" id="consolidation-tools" role="tabpanel" aria-labelledby="consolidation-tools-title" hidden>
+        <p>Cruze a lista original de inscrição (por exemplo, a exportação do ECOS) com o credenciamento e veja a situação de cada inscrição: quem foi credenciado, quem não foi, quem não foi encontrado e quem está no credenciamento fora da lista. <strong>O arquivo é lido só neste navegador:</strong> não é enviado ao servidor nem fica guardado no sistema. Ao recarregar a página, o resultado some; baixe os arquivos se quiser guardá-lo.</p>
+        <p class="muted">CSV em UTF-8 ou Windows-1252, separado por ponto e vírgula, vírgula ou tabulação, com as colunas Nome e E-mail e, de preferência, CPF e Status (os nomes valem sem diferenciar maiúsculas, acentos e hífens). Como CPF e e-mail ficam no sistema só como chave, a comparação é pelo nome; com CPF na lista, os 3 primeiros dígitos separam homônimos. Inscrições com status cancelado ficam fora da lista consolidada. O que não bater recebe sugestões para você confirmar.</p>
+        <form id="consolidation-form" class="import-form">
+          <label class="field">Lista de inscrição (CSV)<input id="consolidation-file" type="file" accept=".csv,.txt,text/csv" required></label>
+          <button class="button small" type="submit">Consolidar</button>
+        </form>
+        <p id="consolidation-status" class="muted" role="status"></p>
+        <div id="consolidation-result" class="consolidation-result" hidden></div>
       </section>
       <section class="dashboard-tool" id="theme-tools" role="tabpanel" aria-labelledby="theme-tools-title" hidden>
         <p>Nome, cores e logo do evento em todas as páginas, inclusive a pública. As mudanças valem na hora para quem abrir ou recarregar uma página. <span id="theme-origin" class="muted"></span></p>

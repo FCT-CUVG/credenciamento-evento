@@ -130,6 +130,22 @@ def find_participants(req, user, data):
     return req.respond(200, {"ids": ids})
 
 
+@route("GET", "/api/consolidation/people", roles=ADMIN)
+def consolidation_people(req, user, data):
+    """Para a consolidação com a lista original de inscrição, feita só no navegador: a lista (com CPF
+    e e-mail em texto) não vem ao servidor, e as chaves de busca e a CHECKIN_LOOKUP_SECRET não vão
+    para lá. O navegador compara pelo nome e pelos 3 primeiros dígitos do CPF."""
+    with connect() as db:
+        people = [dict(row) for row in db.execute(
+            "SELECT id, name, name_key, cpf_prefix, guiche, status, claimed_by, completed_at "
+            "FROM participants ORDER BY name_key")]
+        delivered_by = {row["participant_id"]: row["actor"] for row in db.execute(
+            "SELECT participant_id, actor FROM events WHERE action='complete' ORDER BY occurred_at, rowid")}
+    for person in people:
+        person["delivered_by"] = delivered_by.get(person["id"], "")
+    return req.respond(200, {"people": people})
+
+
 @route("GET", "/api/participants/export", roles=ADMIN)
 def export_participants(req, user, data):
     return req.send_csv("dados-participantes.csv", participants_download())

@@ -385,6 +385,20 @@ Um banco criado por uma versão anterior, que guardava CPF e e-mail em texto, é
 
 Para criar uma cópia consistente do banco enquanto o serviço está em uso, execute `python3 app.py backup /caminho/seguro/backup-AAAA-MM-DD.sqlite3`. O comando não substitui um backup existente. Guarde cópias fora do servidor do evento.
 
+### Consolidação com a lista de inscrição (no painel)
+
+Na aba **Consolidação** do painel, a coordenação escolhe a lista original de inscrição (por exemplo, a exportação do ECOS) e vê a situação de cada inscrição. **O arquivo é lido só no navegador:** não é enviado ao servidor, não fica guardado no sistema e some ao recarregar a página. O servidor só entrega ao navegador os participantes (nome, início do CPF, guichê, situação e quem buscou e entregou), sem as chaves de CPF e e-mail; a `CHECKIN_LOOKUP_SECRET` também não sai do servidor.
+
+Sem a chave, o navegador não compara CPF nem e-mail: cada linha é procurada pelo nome (sem diferenciar maiúsculas e acentos) e, quando a lista tem CPF, pelos 3 primeiros dígitos, que separam homônimos. O formato da lista é o mesmo do script abaixo. O resultado mostra:
+
+- um resumo (linhas, canceladas, pessoas encontradas, credenciadas e não credenciadas) e os totais do credenciamento, para conferir com o painel;
+- **cancelados na lista, mas credenciados**; **no credenciamento, mas fora da lista**; **inscrições válidas não credenciadas**; e **inscrições não encontradas**;
+- para quem está no credenciamento, o botão **Mostrar na lista de participantes**, que filtra a tabela por essas pessoas para resolver na linha ou em lote;
+- para as não encontradas, sugestões de pessoas parecidas (nome igual ou duas palavras em comum), com **É a mesma pessoa** para confirmar (vale até recarregar a página);
+- os arquivos `…-consolidada.csv` e `…-pendencias.csv`, com as mesmas colunas do script (em `encontrado_por`: `nome`, `nome+cpf_inicio` ou `manual`), gerados no próprio navegador.
+
+Quem mudou de nome num dos sistemas aparece como não encontrado e fora da lista até a correspondência ser confirmada. Para cruzar também por CPF e e-mail completos, use o script abaixo, fora do servidor.
+
 ### Lista de credenciados com CPF
 
 Como o banco e o backup não têm CPF nem e-mail, a lista de quem foi credenciado com esses dados sai do cruzamento da lista original de inscrição com o backup `.json` baixado no painel. O script `scripts/credenciados.py` é um arquivo só, sem dependências, e pode ser copiado e rodado em qualquer computador com Python 3:
@@ -453,7 +467,7 @@ O envio preserva revisões mais recentes e não duplica IDs de eventos em tentat
 python3 -m unittest discover -s tests -v
 ```
 
-Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `test_queue_and_status.py`, `test_import_export.py`, `test_desks.py`, `test_desk_search.py`, `test_dashboard_changes.py`, `test_backup.py`, `test_web.py`, `test_storage.py`). A base comum em `tests/support.py` cria banco e configuração numa pasta temporária, faz requisições diretas ao servidor e já tem os usuários `vol1`, `vol2`, `att1` e `admin`, com o pré-check-in aberto.
+Os testes ficam em `tests/`, um arquivo por área (`test_public_checkin.py`, `test_queue_and_status.py`, `test_import_export.py`, `test_desks.py`, `test_desk_search.py`, `test_dashboard_changes.py`, `test_backup.py`, `test_consolidation.py`, `test_web.py`, `test_storage.py`). `test_consolidation.py` roda a consolidação do painel (JavaScript) no Node; sem o Node instalado, esses testes são pulados. A base comum em `tests/support.py` cria banco e configuração numa pasta temporária, faz requisições diretas ao servidor e já tem os usuários `vol1`, `vol2`, `att1` e `admin`, com o pré-check-in aberto.
 
 ## Organização do código
 
