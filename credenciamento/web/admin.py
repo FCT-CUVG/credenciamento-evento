@@ -147,6 +147,36 @@ def consolidation_people(req, user, data):
     return req.respond(200, {"people": people})
 
 
+MATCH_LIMIT = 20000
+
+
+@route("POST", "/api/consolidation/match", roles=ADMIN, max_body=2_000_000,
+       forbidden="Somente a coordenação pode consolidar a lista de inscrição.")
+def consolidation_match(req, user, data):
+    """Comparação por CPF e e-mail completos para a consolidação feita no navegador, quando a
+    coordenação escolhe usá-la. Chegam só a linha, o CPF e o e-mail de cada inscrição (nome e demais
+    colunas ficam no navegador); as chaves são calculadas em memória e nada é gravado nem vai para o
+    log. Volta só, por linha, o participante do CPF e os do e-mail."""
+    entries = data.get("entries")
+    if not isinstance(entries, list) or len(entries) > MATCH_LIMIT or not all(
+            isinstance(e, dict) and isinstance(e.get("line"), int) for e in entries):
+        return req.respond(400, {"error": f"Envie até {MATCH_LIMIT} linhas com CPF ou e-mail."})
+    with connect() as db:
+        rows = db.execute("SELECT id, cpf_key, email_key FROM participants").fetchall()
+    by_cpf = {row["cpf_key"]: row["id"] for row in rows if row["cpf_key"]}
+    by_email = {}
+    for row in rows:
+        by_email.setdefault(row["email_key"], []).append(row["id"])
+    matches = []
+    for entry in entries:
+        cpf = re.sub(r"\D", "", str(entry.get("cpf") or ""))
+        email = str(entry.get("email") or "").strip()
+        found = {"line": entry["line"], "cpf": by_cpf.get(cpf_key(cpf)) if len(cpf) == 11 else None,
+                 "email": by_email.get(email_key(email), []) if "@" in email else []}
+        if found["cpf"] or found["email"]:
+            matches.append(found)
+    return req.respond(200, {"matches": matches})
+
 @route("GET", "/api/participants/export", roles=ADMIN)
 def export_participants(req, user, data):
     return req.send_csv("dados-participantes.csv", participants_download())

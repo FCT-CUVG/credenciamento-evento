@@ -1,6 +1,7 @@
-"""Consolidação da lista original de inscrição, feita só no navegador (static/js/dashboard/consolidation-core.js).
+"""Consolidação da lista original de inscrição, feita no navegador (static/js/dashboard/consolidation-core.js).
 
-O servidor só entrega os participantes sem chaves de busca; o cruzamento roda no Node, quando instalado."""
+O servidor entrega os participantes sem chaves de busca e compara só CPF e e-mail com as chaves; o
+cruzamento roda no Node, quando instalado."""
 import base64
 import csv
 import io
@@ -17,12 +18,14 @@ from support import CredenciamentoTestCase
 CORE = Path(__file__).resolve().parent.parent / "static" / "js" / "dashboard" / "consolidation-core.js"
 NODE = shutil.which("node")
 RUNNER = f"""
-import {{consolidate, decode}} from {json.dumps(CORE.as_uri())};
+import {{consolidate, decode, keyEntries}} from {json.dumps(CORE.as_uri())};
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
-const {{content, people, manual}} = JSON.parse(input);
+const {{content, people, manual, matches}} = JSON.parse(input);
 const text = decode(Buffer.from(content, 'base64'));
-process.stdout.write(JSON.stringify(consolidate(text, people, new Map(manual))));
+const keyMatches = matches && new Map(matches.map(match => [match.line, match]));
+process.stdout.write(JSON.stringify(people ? consolidate(text, people, new Map(manual), keyMatches)
+  : keyEntries(text)));
 """
 
 # Exportação do sistema de inscrição salva pelo Excel: Windows-1252, cabeçalhos próprios, CPF como
@@ -64,12 +67,19 @@ class ConsolidationTest(CredenciamentoTestCase):
         self.assertEqual(code, 200)
         return body["people"]
 
-    def run_core(self, manual=()):
-        payload = {"content": base64.b64encode(ORIGINAL.encode("cp1252")).decode(), "people": self.people(),
-                   "manual": list(manual)}
+    def node(self, **payload):
+        payload["content"] = base64.b64encode(ORIGINAL.encode("cp1252")).decode()
         result = subprocess.run([NODE, "--input-type=module", "-e", RUNNER], input=json.dumps(payload),
                                 capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
+
+    def run_core(self, manual=(), matches=None):
+        """Sem matches: só pelo nome e início do CPF. Com matches: o que o servidor devolveu."""
+        return self.node(people=self.people(), manual=list(manual), matches=matches)
+
+    def match(self, entries, user="admin"):
+        cookie, csrf = self.admin if user == "admin" else self.login(user)
+        return self.request("/api/consolidation/match", {"entries": entries}, cookie=cookie, csrf=csrf)
 
     @staticmethod
     def rows(text):
@@ -148,6 +158,38 @@ class ConsolidationTest(CredenciamentoTestCase):
         self.assertNotIn(("fora_da_lista", "Bruno Lima"), kinds)
         self.assertNotIn(("nao_encontrado", "Bruno Lima Júnior"), kinds)
         self.assertEqual(result["summary"]["manual"], 1)
+
+    def test_only_line_cpf_and_email_go_to_the_server_and_ids_come_back(self):
+        entries = self.node()
+        # Name and the other columns stay in the browser; the CPF that lost its leading zero is fixed.
+        self.assertEqual(sorted({key for entry in entries for key in entry}), ["cpf", "email", "line"])
+        self.assertIn({"line": 6, "cpf": "03333333333", "email": "eva@example.org"}, entries)
+        code, body, _ = self.match(entries)
+        self.assertEqual(code, 200)
+        bruno, eva = self.pid_by_email("bruno@example.org"), self.pid_by_email("eva@example.org")
+        found = {match["line"]: match for match in body["matches"]}
+        self.assertEqual((found[3]["cpf"], found[3]["email"]), (bruno, []))
+        self.assertEqual((found[6]["cpf"], found[6]["email"]), (eva, [eva]))
+        self.assertNotIn(8, found)  # Fulano is not in the system
+        self.assertNotIn("_key", json.dumps(body))
+        code, _, _ = self.match(entries, user="att1")
+        self.assertEqual(code, 403)
+        code, _, _ = self.match([{"cpf": "1"}])
+        self.assertEqual(code, 400)
+
+    def test_cpf_and_email_find_who_changed_name(self):
+        _, body, _ = self.match(self.node())
+        result = self.run_core(matches=body["matches"])
+        rows = self.rows(result["listCsv"])
+        bruno = self.pid_by_email("bruno@example.org")
+        # Bruno changed his name and e-mail: found by the CPF, no longer a pending match.
+        self.assertEqual((rows[1]["credenciado"], rows[1]["encontrado_por"], rows[1]["participante_id"]),
+                         ("sim", "cpf", bruno))
+        self.assertEqual((rows[0]["encontrado_por"], rows[2]["encontrado_por"]), ("nome+email", "nome+email"))
+        kinds = [(i["ocorrencia"], i["nome"]) for i in result["issues"]]
+        self.assertNotIn(("nao_encontrado", "Bruno Lima Júnior"), kinds)
+        self.assertNotIn(("fora_da_lista", "Bruno Lima"), kinds)
+        self.assertIn(("nao_encontrado", "Fulano"), kinds)
 
 
 if __name__ == "__main__":
