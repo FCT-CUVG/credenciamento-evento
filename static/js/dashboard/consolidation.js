@@ -104,19 +104,20 @@ export function initConsolidation(showParticipants) {
         `${plural(s.list.yes, 'credenciada', 'credenciadas')}`,
         `${plural(s.list.no, 'não credenciada', 'não credenciadas')}`,
         `${plural(s.list.notFound, 'não encontrada', 'não encontradas')} no credenciamento`,
-        s.list.rows > s.list.people ? 'Quem está em mais de uma linha conta pela linha da última movimentação ' +
-          (s.dateColumn ? `(coluna “${s.dateColumn}”)` : '(sem coluna de data: a última linha do arquivo)') +
-          '; o status da lista não muda nada.' : '',
+        s.list.cancelled ? `${plural(s.list.cancelled, 'inscrição cancelada ficou', 'inscrições canceladas ficaram')} ` +
+          'de fora (quem foi credenciado conta, mesmo cancelado).' : '',
+        s.list.rows > s.list.people + s.list.cancelled ? 'Quem está em mais de uma linha conta pela linha da última ' +
+          'movimentação ' + (s.dateColumn ? `(coluna “${s.dateColumn}”).` : '(sem coluna de data: a última linha do arquivo).')
+          : '',
         // Só avisa se nenhuma data da coluna escolhida pôde ser lida.
         s.dateColumn && s.undated === s.list.rows ? `Nenhuma data da coluna “${s.dateColumn}” pôde ser lida; ` +
           'escolha outra coluna.' : ''
       ], buttons(
-        button('Baixar sua lista com o credenciamento',
-          () => download(`${baseName}-atualizada.csv`, result.listCsv), 'button small'),
-        button(`Baixar só os credenciados (${s.list.yes})`,
-          () => download(`${baseName}-credenciados.csv`, result.completedCsv)),
-        button('Só os credenciados, com as colunas da sua lista',
-          () => download(`${baseName}-credenciados-colunas-originais.csv`, result.completedOriginalCsv)))),
+        // Só quem foi credenciado e tem linha na lista enviada, uma linha por pessoa.
+        button(`Baixar credenciados (${s.list.yes})`,
+          () => download(`${baseName}-credenciados.csv`, result.completedOriginalCsv), 'button small'),
+        button('Credenciados, com os dados do credenciamento',
+          () => download(`${baseName}-credenciados-com-dados.csv`, result.completedCsv)))),
       part(`No credenciamento, fora da sua lista: ${plural(s.others.total, 'pessoa', 'pessoas')}`, [
         `${plural(s.others.completed, 'credenciada', 'credenciadas')}`,
         `${plural(s.others.total - s.others.completed, 'não credenciada', 'não credenciadas')}`,
@@ -134,6 +135,7 @@ export function initConsolidation(showParticipants) {
 
     const actions = el('div', 'dashboard-tool-actions');
     actions.append(
+      button('Baixar lista completa (todas as linhas)', () => download(`${baseName}-atualizada.csv`, result.listCsv)),
       button('Baixar pendências', () => download(`${baseName}-pendencias.csv`, result.issuesCsv)),
       button('Consolidar de novo', run));
     if (manual.size) {
