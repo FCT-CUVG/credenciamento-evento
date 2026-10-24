@@ -137,7 +137,8 @@ def consolidation_people(req, user, data):
     para lá. O navegador compara pelo nome e pelos 3 primeiros dígitos do CPF."""
     with connect() as db:
         people = [dict(row) for row in db.execute(
-            "SELECT id, name, name_key, cpf_prefix, guiche, status, claimed_by, completed_at "
+            "SELECT id, name, name_key, badge_name, affiliation, country, cpf_prefix, guiche, status, claimed_by, "
+            "completed_at "
             "FROM participants ORDER BY name_key")]
         delivered_by = {row["participant_id"]: row["actor"] for row in db.execute(
             "SELECT participant_id, actor FROM events WHERE action='complete' ORDER BY occurred_at, rowid")}

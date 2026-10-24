@@ -73,6 +73,7 @@ class CredenciadosScriptTest(CredenciamentoTestCase):
         # Eva's two valid rows are the same person: the second one points to the first.
         self.assertEqual((rows[2]["credenciado"], rows[2]["mesma_pessoa_que_linha"]), ("sim", ""))
         self.assertEqual(rows[3]["mesma_pessoa_que_linha"], "6")
+        self.assertEqual(rows[2]["linhas_canceladas_mesma_pessoa"], "5")
         self.assertEqual(rows[4]["credenciado"], "não encontrado")
 
         issues = [(row["ocorrencia"], row["nome"], row["linha_lista"]) for row in self.read("saida-pendencias.csv")]

@@ -8,8 +8,11 @@
 export const SITUACAO = {registered: 'inscrito (não chegou)', prechecked: 'chegou, aguardando busca',
   searching: 'em busca', ready: 'pronto no guichê', completed: 'credenciado'};
 export const EXTRA = ['credenciado', 'credenciado_em', 'credenciado_por', 'buscado_por', 'guiche', 'situacao',
-  'encontrado_por', 'participante_id', 'mesma_pessoa_que_linha'];
+  'encontrado_por', 'participante_id', 'mesma_pessoa_que_linha', 'linhas_canceladas_mesma_pessoa'];
 export const ISSUE_KINDS = ['cancelado_e_credenciado', 'fora_da_lista', 'nao_credenciado', 'nao_encontrado'];
+// Pessoas do credenciamento sem inscrição válida na lista (inclusive quem não tem CPF ou e-mail).
+export const OTHER_FIELDS = ['nome', 'nome_cracha', 'afiliacao', 'pais', 'cpf_inicio', 'guiche', 'credenciado',
+  'credenciado_em', 'credenciado_por', 'situacao', 'motivo', 'participante_id'];
 export const ISSUE_FIELDS = ['ocorrencia', 'nome', 'linha_lista', 'situacao', 'credenciado_em', 'credenciado_por',
   'guiche', 'participante_id'];
 
@@ -142,6 +145,15 @@ export function consolidate(text, people, manual = new Map()) {
   const issue = (kind, name, line, person) => ({ocorrencia: kind, nome: name, linha_lista: line,
     ...(person ? details(person) : Object.fromEntries(ISSUE_FIELDS.slice(3).map(key => [key, ''])))});
 
+  // Cada linha é uma inscrição com o status atual dela, então a ordem não importa: quem tem alguma
+  // linha válida está na lista, e as linhas canceladas da mesma pessoa só ficam anotadas.
+  const cancelledLines = new Map(); // participante -> linhas canceladas que caíram nele
+  for (const {line, person} of cancelled) {
+    if (!person) continue;
+    if (!cancelledLines.has(person.id)) cancelledLines.set(person.id, []);
+    cancelledLines.get(person.id).push(String(line));
+  }
+
   const firstLine = new Map(); // participante -> primeira linha válida da planilha em que apareceu
   const issues = [], output = [];
   for (const {line, row, person, foundBy} of valid) {
@@ -157,20 +169,22 @@ export function consolidate(text, people, manual = new Map()) {
       Object.assign(values, {credenciado: completed ? 'sim' : 'não', credenciado_em: info.credenciado_em,
         credenciado_por: info.credenciado_por, buscado_por: person.claimed_by || '', guiche: person.guiche,
         situacao: info.situacao, encontrado_por: foundBy, participante_id: person.id,
-        mesma_pessoa_que_linha: repeated ? String(firstLine.get(person.id)) : ''});
+        mesma_pessoa_que_linha: repeated ? String(firstLine.get(person.id)) : '',
+        linhas_canceladas_mesma_pessoa: (cancelledLines.get(person.id) || []).join(', ')});
       if (!completed && !repeated) issues.push(issue('nao_credenciado', name, String(line), person));
     }
     output.push(values);
   }
 
-  const cancelledLines = new Map(); // participante -> linhas canceladas que caíram nele
-  for (const {line, person} of cancelled) {
-    if (!person) continue;
-    if (!cancelledLines.has(person.id)) cancelledLines.set(person.id, []);
-    cancelledLines.get(person.id).push(String(line));
-  }
+  const others = [];
   for (const person of people) {
     if (firstLine.has(person.id)) continue; // tem inscrição válida na lista
+    const info = details(person), lines = cancelledLines.get(person.id);
+    others.push({nome: person.name, nome_cracha: person.badge_name || '', afiliacao: person.affiliation || '',
+      pais: person.country || '', cpf_inicio: person.cpf_prefix || '', guiche: person.guiche,
+      credenciado: person.status === 'completed' ? 'sim' : 'não', credenciado_em: info.credenciado_em,
+      credenciado_por: info.credenciado_por, situacao: info.situacao, participante_id: person.id,
+      motivo: lines ? `inscrição cancelada na lista (linha ${lines.join(', ')})` : 'não está na lista'});
     if (cancelledLines.has(person.id)) {
       if (person.status === 'completed') {
         issues.push(issue('cancelado_e_credenciado', person.name, cancelledLines.get(person.id).join(','), person));
@@ -193,14 +207,28 @@ export function consolidate(text, people, manual = new Map()) {
 
   const count = Object.fromEntries(ISSUE_KINDS.map(kind => [kind, issues.filter(i => i.ocorrencia === kind).length]));
   const matched = people.filter(person => firstLine.has(person.id));
-  const summary = {rows: valid.length + cancelled.length, cancelled: cancelled.length, valid: valid.length,
+  const listCount = value => output.filter(values => values.credenciado === value).length;
+  const summary = {list: {rows: output.length, yes: listCount('sim'), no: listCount('não'),
+      notFound: listCount('não encontrado')},
+    others: {total: others.length, completed: others.filter(item => item.credenciado === 'sim').length,
+      noCpf: others.filter(item => !item.cpf_inicio).length},
+    // Quantas linhas de cada status: só os que começam por "cancel" saem da lista.
+    statuses: column.status ? Object.entries(rows.reduce((counts, {row}) => {
+      const value = String(row[column.status] ?? '').trim() || '(vazio)';
+      counts[value] = (counts[value] || 0) + 1;
+      return counts;
+    }, {})).sort((a, b) => b[1] - a[1]) : [],
+    rows: valid.length + cancelled.length, cancelled: cancelled.length, valid: valid.length,
     matched: matched.length, matchedCompleted: matched.filter(p => p.status === 'completed').length,
     repeated: valid.length - count.nao_encontrado - matched.length, ignored, hasStatus: Boolean(column.status),
     hasCpf: Boolean(column.cpf), manual: valid.filter(item => item.foundBy === 'manual').length, issues: count,
     system: {total: people.length, arrived: people.filter(p => p.status !== 'registered').length,
       completed: people.filter(p => p.status === 'completed').length}};
+  // Só os credenciados da lista, uma linha por pessoa.
+  const completedRows = output.filter(values => values.credenciado === 'sim' && !values.mesma_pessoa_que_linha);
   return {summary, issues, listCsv: toCsv([...fields, ...EXTRA], output, delimiter),
-    issuesCsv: toCsv(ISSUE_FIELDS, issues, delimiter)};
+    completedCsv: toCsv([...fields, ...EXTRA], completedRows, delimiter),
+    othersCsv: toCsv(OTHER_FIELDS, others, delimiter), issuesCsv: toCsv(ISSUE_FIELDS, issues, delimiter)};
 }
 
 // Evita que a planilha execute o conteúdo da célula como fórmula.
