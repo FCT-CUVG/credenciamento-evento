@@ -1,4 +1,4 @@
-// Ferramentas do painel detalhado: abas, importação, Apps Script do Google Sheets e guichês.
+// Configurações do admin: importação, Apps Script do Google Sheets e guichês.
 import {$, api, el, renderTeamNav} from '../common.js';
 
 function toolStatus(id, value, error = false) {
@@ -69,36 +69,6 @@ function renderRangeRows(ranges) {
 
 const currentRanges = () => [...$('range-rows').children].map(row =>
   Object.fromEntries([...row.querySelectorAll('input')].map(input => [input.name, input.value])));
-
-// Abas "Participantes" e "Configuração dos guichês" (setas do teclado e atalhos do topo).
-export function initTabs() {
-  const tabs = [...document.querySelectorAll('.dashboard-tabs [role="tab"]')];
-  const select = (tab, focus = false) => {
-    for (const other of tabs) {
-      const selected = other === tab;
-      other.setAttribute('aria-selected', String(selected));
-      other.tabIndex = selected ? 0 : -1;
-      $(other.getAttribute('aria-controls')).hidden = !selected;
-    }
-    if (focus) tab.focus();
-  };
-  tabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => select(tab));
-    tab.addEventListener('keydown', event => {
-      const step = {ArrowRight: 1, ArrowLeft: -1}[event.key];
-      if (!step) return;
-      event.preventDefault();
-      select(tabs[(index + step + tabs.length) % tabs.length], true);
-    });
-  });
-  // Os atalhos do topo abrem a aba correspondente.
-  for (const link of document.querySelectorAll('.dashboard-shortcuts a[href^="#"]')) {
-    const tab = tabs.find(candidate => '#' + candidate.id === link.getAttribute('href'));
-    if (tab) link.addEventListener('click', () => select(tab));
-  }
-  const initial = tabs.find(tab => '#' + tab.id === location.hash);
-  if (initial) select(initial);
-}
 
 export async function initTools(refresh) {
   $('participants-import-form').addEventListener('submit', async event => {

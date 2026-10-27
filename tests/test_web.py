@@ -21,7 +21,7 @@ class WebTest(CredenciamentoTestCase):
                   *((f"/assets/{font}", "font/woff2") for font in event["fonts"].values())]
         if event.get("decoration"):
             assets.append((f"/assets/{event['decoration']}", "image/svg+xml"))
-        for path, expected_type in (("/", "text/html"), ("/painel/resumo", "text/html"),
+        for path, expected_type in (("/", "text/html"), ("/dashboard", "text/html"),
                                     ("/app.css", "text/css"),
                                     *assets):
             code, body, headers = self.request(path, json_response=False)
@@ -54,7 +54,7 @@ class WebTest(CredenciamentoTestCase):
             self.assertNotIn(b"nome completo", page)
             self.assertNotIn(b"{{EVENT_NAME}}", page)
             admin = self.login("admin")[0]
-            for route in ("/busca", "/fila", "/painel"):
+            for route in ("/separacao", "/fila", "/admin", "/admin/guiches"):
                 code, team_page, _ = self.request(route, cookie=admin, json_response=False)
                 self.assertEqual(code, 200)
                 self.assertNotIn(b'class="page-context"', team_page)
@@ -108,19 +108,35 @@ class WebTest(CredenciamentoTestCase):
                     self.assertEqual(self.request(target, cookie=volunteer[0])[0], 401)
 
     def test_staff_pages_are_not_sent_without_session_or_role(self):
-        for page in ("/painel", "/busca", "/fila"):
+        for page in ("/admin", "/admin/guiches", "/separacao", "/fila"):
             code, body, headers = self.request(page, json_response=False)
             self.assertEqual((code, headers["Location"], body), (302, "/login", b""), page)
         volunteer, attendant = self.login("vol1")[0], self.login("att1")[0]
-        self.assertEqual(self.request("/painel", cookie=volunteer, json_response=False)[2]["Location"], "/busca")
-        self.assertEqual(self.request("/painel", cookie=attendant, json_response=False)[2]["Location"], "/fila")
-        for page in ("/busca", "/fila"):
+        for page in ("/admin", "/admin/backup"):
+            self.assertEqual(self.request(page, cookie=volunteer, json_response=False)[2]["Location"], "/separacao")
+            self.assertEqual(self.request(page, cookie=attendant, json_response=False)[2]["Location"], "/fila")
+        for page in ("/separacao", "/fila"):
             self.assertEqual(self.request(page, cookie=volunteer, json_response=False)[0], 200)
         with database.connect() as db:
             auth.end_user_sessions(db, "vol1")
-        self.assertEqual(self.request("/busca", cookie=volunteer, json_response=False)[2]["Location"], "/login")
-        for page in ("/", "/login", "/painel/resumo"):
+        self.assertEqual(self.request("/separacao", cookie=volunteer, json_response=False)[2]["Location"], "/login")
+        for page in ("/", "/login", "/dashboard"):
             self.assertEqual(self.request(page, json_response=False)[0], 200)
+
+    def test_old_page_addresses_redirect_to_new_ones(self):
+        for old, new in (("/busca", "/separacao"), ("/painel", "/admin"), ("/painel/resumo", "/dashboard"),
+                         ("/busca?x=1", "/separacao?x=1")):
+            code, body, headers = self.request(old, json_response=False)
+            self.assertEqual((code, headers["Location"], body), (302, new, b""), old)
+
+    def test_admin_sections_share_the_admin_page_and_odd_paths_are_not_found(self):
+        admin = self.login("admin")[0]
+        page = self.request("/admin", cookie=admin, json_response=False)[1]
+        for slug in ("participantes", "guiches", "pagamento", "backup", "consolidacao", "identidade", "google-sheets"):
+            self.assertIn(f'data-section="{slug}"'.encode(), page)
+            self.assertEqual(self.request("/admin/" + slug, cookie=admin, json_response=False)[1], page)
+        for path in ("/admin/", "/admin/Guiches", "/admin/a/b", "/admin/../app.py", "/admin.html", "/dashboard/x"):
+            self.assertEqual(self.request(path, cookie=admin, json_response=False)[0], 404, path)
 
     def test_staff_scripts_and_server_details_are_not_public(self):
         volunteer, admin = self.login("vol2")[0], self.login("admin")[0]
@@ -142,12 +158,12 @@ class WebTest(CredenciamentoTestCase):
         self.assertEqual(code, 404)
         self.assertNotIn(b"Python", body)
         self.assertNotIn("Python", headers["Server"])
-        for path in ("/", "/api/event", "/painel"):
+        for path in ("/", "/api/event", "/admin"):
             self.assertEqual(self.request(path, json_response=path == "/api/event")[2]["X-Robots-Tag"], "noindex, nofollow")
 
     def test_pages_load_existing_javascript_modules_only_from_static_js(self):
         admin = self.login("admin")[0]
-        for page in ("/", "/login", "/busca", "/fila", "/painel", "/painel/resumo"):
+        for page in ("/", "/login", "/separacao", "/fila", "/admin", "/admin/consolidacao", "/dashboard"):
             code, html, _ = self.request(page, cookie=admin, json_response=False)
             scripts = re.findall(rb'<script type="module" src="([^"]+)"', html)
             self.assertEqual((code, len(scripts)), (200, 1), page)
@@ -275,7 +291,7 @@ class WebTest(CredenciamentoTestCase):
         self.assertEqual((code, saved["custom_logo"]), (200, True))
         self.assertRegex(logo, r"^/assets/upload-logo-[0-9a-f]{16}\.png$")
         self.assertEqual(self.request("/api/event")[1]["logo"], logo)
-        self.assertIn(logo.encode(), self.request("/painel/resumo", json_response=False)[1])
+        self.assertIn(logo.encode(), self.request("/dashboard", json_response=False)[1])
         code, body, headers = self.request(logo, json_response=False)
         self.assertEqual((code, body, headers["Content-Type"]), (200, png, "image/png"))
         self.assertIn("sandbox", headers["Content-Security-Policy"])

@@ -3,6 +3,7 @@ import hmac
 import html
 import ipaddress
 import json
+import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -24,9 +25,14 @@ def is_trusted(address, networks):
 
 
 # Telas da equipe: sem sessão (ou sem o papel), o servidor nem envia a página nem o código dela.
-STAFF_PAGES = {"/painel": ADMIN, "/busca": STAFF, "/fila": STAFF}
+STAFF_PAGES = {"/admin": ADMIN, "/separacao": STAFF, "/fila": STAFF}
 STAFF_SCRIPTS = {"/js/dashboard": ADMIN, "/js/queue.js": STAFF}
-HOME = {"admin": "/painel", "volunteer": "/busca", "attendant": "/fila"}
+HOME = {"admin": "/admin", "volunteer": "/separacao", "attendant": "/fila"}
+# Cada configuração do admin tem endereço próprio (/admin/guiches...), servido pela mesma página:
+# quem escolhe a tela é o script (dashboard/views.js), que volta para /admin num nome desconhecido.
+ADMIN_SECTION = re.compile(r"/admin/[a-z][a-z-]{0,39}")
+# Endereços antigos continuam valendo para favoritos e atalhos já salvos nos aparelhos.
+OLD_PAGES = {"/busca": "/separacao", "/painel": "/admin", "/painel/resumo": "/dashboard"}
 
 
 class App(BaseHTTPRequestHandler):
@@ -134,10 +140,14 @@ class App(BaseHTTPRequestHandler):
                     "image/jpeg" if asset.endswith((".jpg", ".jpeg")) else
                     "image/webp" if asset.endswith(".webp") else
                     "image/svg+xml" if asset.endswith(".svg") else "font/woff2")
+        elif path in OLD_PAGES:
+            query = urlparse(self.path).query
+            return self.redirect(OLD_PAGES[path] + ("?" + query if query else ""))
         else:
-            routes = {"/": "index.html", "/busca": "busca.html", "/fila": "fila.html",
-                      "/painel": "painel.html",
-                      "/painel/resumo": "resumo.html", "/login": "login.html",
+            if ADMIN_SECTION.fullmatch(path):
+                path = "/admin"
+            routes = {"/": "index.html", "/separacao": "separacao.html", "/fila": "fila.html",
+                      "/admin": "admin.html", "/dashboard": "dashboard.html", "/login": "login.html",
                       "/app.css": "app.css"}
             # Módulos JavaScript: só arquivos .js que existem dentro de static/js.
             scripts = settings.STATIC / "js"

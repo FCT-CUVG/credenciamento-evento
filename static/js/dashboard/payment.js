@@ -87,9 +87,9 @@ export async function initPayment(refresh) {
       button.disabled = false;
     }
   });
-  // Ao abrir a aba, relê as situações (uma importação pode ter trazido novas), sem perder edições.
-  $('payment-tools-title').addEventListener('click', () => {
-    if ($('payment-status').textContent !== 'Alterações não salvas.') load();
+  // Ao abrir a tela, relê as situações (uma importação pode ter trazido novas), sem perder edições.
+  document.addEventListener('admin:view', event => {
+    if (event.detail === 'pagamento' && $('payment-status').textContent !== 'Alterações não salvas.') load();
   });
   await load();
 }

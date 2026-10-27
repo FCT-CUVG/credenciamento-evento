@@ -45,17 +45,17 @@ h1, h2, h3, p { margin-top: 0; }
 .header-right a:hover { color: var(--leaf-dark); }
 .user-label { color: var(--slate); font-size: .88rem; }
 .team-links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.team-links > a[aria-current="page"] { color: var(--leaf-dark); text-decoration: underline; text-underline-offset: 6px; }
-.guiche-menu { position: relative; color: var(--navy-header); font-size: .95rem; font-weight: 700; }
-.guiche-menu summary { display: flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; list-style: none; }
-.guiche-menu summary::-webkit-details-marker { display: none; }
-.guiche-menu summary::after { content: "▾"; font-size: .8em; }
-.guiche-menu summary:focus-visible, .team-links a:focus-visible { outline: 3px solid var(--leaf); outline-offset: 4px; }
-.guiche-options { position: absolute; z-index: 10; right: 0; top: 100%; width: max-content; min-width: 250px; max-width: min(90vw, 390px); max-height: 70vh; overflow: auto; padding: 7px; background: var(--white); border: 1px solid #d5dbe4; box-shadow: 0 12px 30px rgba(28,29,58,.18); }
-.guiche-options a { display: flex; align-items: center; min-height: 48px; padding: 8px 13px; border-bottom: 1px solid #e8ecf0; white-space: normal; }
-.guiche-options a:last-child { border-bottom: 0; }
-.guiche-separator { margin: 4px 0; border: 0; border-top: 2px solid #d5dbe4; }
-.guiche-options a:hover { background: #edf4f0; }
+.team-links > a[aria-current="page"], .nav-menu:has([aria-current="page"]) > summary { color: var(--leaf-dark); text-decoration: underline; text-underline-offset: 6px; }
+.nav-menu { position: relative; color: var(--navy-header); font-size: .95rem; font-weight: 700; }
+.nav-menu summary { display: flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; list-style: none; }
+.nav-menu summary::-webkit-details-marker { display: none; }
+.nav-menu summary::after { content: "▾"; font-size: .8em; }
+.nav-menu summary:focus-visible, .team-links a:focus-visible { outline: 3px solid var(--leaf); outline-offset: 4px; }
+.nav-options { position: absolute; z-index: 10; right: 0; top: 100%; width: max-content; min-width: 250px; max-width: min(90vw, 390px); max-height: 70vh; overflow: auto; padding: 7px; background: var(--white); border: 1px solid #d5dbe4; box-shadow: 0 12px 30px rgba(28,29,58,.18); }
+.nav-options a { display: flex; align-items: center; min-height: 48px; padding: 8px 13px; border-bottom: 1px solid #e8ecf0; white-space: normal; }
+.nav-options a:last-child { border-bottom: 0; }
+.nav-separator { margin: 4px 0; border: 0; border-top: 2px solid #d5dbe4; }
+.nav-options a:hover, .nav-options a[aria-current="page"] { background: #edf4f0; }
 
 main { width: min(100%, 1500px); margin: 0 auto; padding: clamp(20px, 3vw, 42px); }
 body[data-page="volunteer"] main, body[data-page="attendant"] main, body[data-page="dashboard"] main, body[data-page="summary"] main { width: 100%; padding: clamp(16px, 2vw, 32px); }
@@ -232,10 +232,15 @@ body[data-page="volunteer"] main, body[data-page="attendant"] main, body[data-pa
 .dashboard-shortcuts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 10px 0 0; }
 .dashboard-shortcuts a { color: var(--navy-header); font-size: .9rem; font-weight: 750; text-underline-offset: 3px; }
 .dashboard-shortcuts a:hover { color: var(--leaf-dark); }
-/* Blocos do painel detalhado, em uma coluna e na ordem salva pela coordenação (ver dashboard/layout.js).
-   O script tira os cartões de .dashboard-tools, que fica só como marcação. */
-.dashboard-tools { display: contents; }
-main > .dashboard-block { margin: 0 0 18px; }
+/* Blocos da lista do admin, em uma coluna e na ordem salva pela coordenação (ver dashboard/layout.js).
+   As configurações ficam fora, cada uma na sua tela (/admin/guiches...; ver dashboard/views.js). */
+.admin-overview > .dashboard-block { margin: 0 0 18px; }
+.admin-config { display: grid; gap: 14px; }
+.admin-config[hidden], .admin-overview[hidden] { display: none; }
+.config-back { margin: 0; }
+.config-back a { color: var(--navy-header); font-size: .95rem; font-weight: 750; text-underline-offset: 3px; }
+.config-back a:hover { color: var(--leaf-dark); }
+.dashboard-tool h2:focus, .admin-overview h1:focus { outline: none; }
 .dashboard-block > .checkin-control { margin: 0; }
 .dashboard-block > .toolbar { margin-top: 0; }
 .dashboard-block > #sync-status { margin-top: 0; }
@@ -243,8 +248,8 @@ main > .dashboard-block { margin: 0 0 18px; }
 .layout-bar .layout-help { flex-basis: 100%; margin: 0; color: var(--navy); font-weight: 700; }
 .layout-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .layout-bar #layout-status { margin: 0; font-size: .9rem; }
-.layout-editing main > .dashboard-block { outline: 2px dashed #9aa3c4; outline-offset: 6px; }
-.layout-editing main > .dashboard-block.is-dragging { opacity: .45; }
+.layout-editing .admin-overview > .dashboard-block { outline: 2px dashed #9aa3c4; outline-offset: 6px; }
+.layout-editing .admin-overview > .dashboard-block.is-dragging { opacity: .45; }
 .block-handle { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; background: #e9eff2; color: var(--navy); cursor: grab; user-select: none; }
 .block-handle:active { cursor: grabbing; }
 .block-grip { font-size: 1.3rem; line-height: 1; }
@@ -255,12 +260,6 @@ main > .dashboard-block { margin: 0 0 18px; }
 .block-handle .button.small { min-width: 44px; min-height: 38px; padding: 4px 10px; font-size: 1rem; }
 .layout-bar #layout-status.error { color: #814314; font-weight: 700; }
 .dashboard-tool { display: grid; align-content: start; gap: 14px; }
-.dashboard-tabs { display: grid; align-content: start; gap: 22px; }
-.tab-list { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid #e0e4ed; }
-.tab { margin-bottom: -2px; padding: 10px 14px 12px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--slate); font: 400 clamp(1.4rem, 2vw, 1.9rem)/1 "Event Display", sans-serif; letter-spacing: .015em; cursor: pointer; }
-.tab:hover { color: var(--navy); }
-.tab[aria-selected="true"] { color: var(--navy); border-bottom-color: var(--leaf); }
-.tab:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 .dashboard-tool[hidden] { display: none; }
 .dashboard-tool h2 { margin: 0; color: var(--navy); font: 400 clamp(1.8rem, 2.5vw, 2.5rem)/1 "Event Display", sans-serif; }
 .dashboard-tool p { margin: 0; color: var(--slate); line-height: 1.45; }
@@ -396,7 +395,6 @@ dialog .actions .button { flex: 1; }
 @media (max-width: 1050px) {
   .public-layout { grid-template-columns: 1fr 1fr; }
   .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .dashboard-tools { grid-template-columns: 1fr; }
 }
 @media (max-width: 800px) {
   .public-layout, .lane-grid, .attendant-grid { grid-template-columns: 1fr; }
@@ -426,8 +424,8 @@ dialog .actions .button { flex: 1; }
   .site-brand-label { padding-left: 9px; font-size: clamp(1rem, 5vw, 1.45rem); }
   .header-right { width: 100%; justify-content: flex-start; gap: 8px 12px; }
   .team-links { gap: 8px 12px; }
-  .guiche-options { left: 0; right: auto; }
-  .header-right a, .user-label { font-size: .82rem; }
+  .nav-options { left: 0; right: auto; }
+  .header-right a, .user-label, .nav-menu { font-size: .82rem; }
   .header-right .button { min-height: 40px; }
   main { padding: 16px; }
   .event-panel { padding: 30px 25px; }

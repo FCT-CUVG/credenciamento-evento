@@ -1,4 +1,4 @@
-// Ordem dos blocos do painel detalhado: arrastar pela alça ou usar ↑ e ↓, e salvar no servidor.
+// Ordem dos blocos da lista do admin: arrastar pela alça ou usar ↑ e ↓, e salvar no servidor.
 import {$, api, clockTime, el} from '../common.js';
 
 // defaults: ordem do HTML, guardada antes de qualquer mudança, para o botão "Ordem padrão".

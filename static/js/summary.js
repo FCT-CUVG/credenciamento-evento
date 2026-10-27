@@ -1,4 +1,4 @@
-// Painel resumido público: inscritos, chegadas e credenciados.
+// Dashboard público (/dashboard): inscritos, chegadas e credenciados.
 import {$, api, loadEventConfig, message} from './common.js';
 
 function setNumber(id, value) {

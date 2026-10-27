@@ -1,4 +1,4 @@
-// Filas da equipe: Separação (/busca, voluntários) e guichês (/fila, atendentes).
+// Filas da equipe: Separação (/separacao, voluntários) e guichês (/fila, atendentes).
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, searchKey, session} from './common.js';
 
 const mode = document.body.dataset.page === 'attendant' ? 'attendant' : 'volunteer';

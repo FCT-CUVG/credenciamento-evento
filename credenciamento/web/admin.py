@@ -1,4 +1,4 @@
-"""Rotas da coordenação: painel detalhado, importação/exportação, guichês e alterações de participante."""
+"""Rotas da coordenação: admin, importação/exportação, guichês e alterações de participante."""
 import csv
 import json
 import re

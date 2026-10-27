@@ -1,4 +1,4 @@
-"""Ordem dos blocos do painel detalhado, definida pela coordenação e igual para todas as contas.
+"""Ordem dos blocos da lista do admin, definida pela coordenação e igual para todas as contas.
 
 O servidor só guarda a lista de identificadores; quem conhece os blocos é a página. Blocos
 desconhecidos são ignorados e blocos novos, ausentes da lista, aparecem na posição padrão."""

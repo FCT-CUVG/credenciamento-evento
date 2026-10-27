@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Painel do credenciamento | {{EVENT_NAME}}</title>
+  <title>Admin do credenciamento | {{EVENT_NAME}}</title>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/theme.css">
   <script type="module" src="/js/dashboard.js"></script>
 </head>
 <body data-page="dashboard">
   <header class="site-header">
-    <a class="site-brand" href="/painel" aria-label="{{EVENT_NAME}} — painel do credenciamento">
+    <a class="site-brand" href="/admin" aria-label="{{EVENT_NAME}} — admin do credenciamento">
       <img src="{{EVENT_LOGO}}" alt="{{EVENT_NAME}}">
       <span class="site-brand-label">Credenciamento</span>
     </a>
@@ -21,9 +21,10 @@
     </nav>
   </header>
   <main>
+    <div id="admin-overview" class="admin-overview">
     <div class="page-heading">
       <div>
-        <h1 class="page-title">PAINEL DO CREDENCIAMENTO</h1>
+        <h1 class="page-title" tabindex="-1">ADMIN DO CREDENCIAMENTO</h1>
         <p>Acompanhe quem chegou, onde está cada crachá e kit, e os participantes credenciados.</p>
       </div>
       <aside class="status-legend" aria-labelledby="status-legend-title">
@@ -73,10 +74,10 @@
     <p id="sync-status" class="muted"></p>
     <div class="dashboard-shortcuts">
       <a href="#dashboard-filter" id="pending-shortcut">Pendências de orientação (<span id="pending-shortcut-count">—</span>)</a>
-      <a href="#participants-tools-title">Importar dados de participantes</a>
-      <a href="#google-sheets-title">Configurar backup no Google Sheets</a>
-      <a href="#guiches-tools-title">Configurar guichês</a>
-      <a href="#consolidation-tools-title">Consolidar com a lista de inscrição</a>
+      <a href="/admin/participantes">Importar dados de participantes</a>
+      <a href="/admin/google-sheets">Configurar backup no Google Sheets</a>
+      <a href="/admin/guiches">Configurar guichês</a>
+      <a href="/admin/consolidacao">Consolidar com a lista de inscrição</a>
     </div>
     </section>
     <section class="dashboard-block" data-block="participants" data-block-title="Lista de participantes" aria-label="Lista de participantes">
@@ -170,17 +171,11 @@
       </div>
     </nav>
     </section>
-    <div class="dashboard-tools">
-      <div class="card dashboard-tabs dashboard-block" data-block="settings" data-block-title="Configurações (abas)">
-      <div class="tab-list" role="tablist" aria-label="Configurações do credenciamento">
-        <button class="tab" id="participants-tools-title" type="button" role="tab" aria-selected="true" aria-controls="participants-tools">Participantes</button>
-        <button class="tab" id="guiches-tools-title" type="button" role="tab" aria-selected="false" aria-controls="guiches-tools" tabindex="-1">Configuração dos guichês</button>
-        <button class="tab" id="payment-tools-title" type="button" role="tab" aria-selected="false" aria-controls="payment-tools" tabindex="-1">Pagamento</button>
-        <button class="tab" id="backup-tools-title" type="button" role="tab" aria-selected="false" aria-controls="backup-tools" tabindex="-1">Backup e limpeza</button>
-        <button class="tab" id="consolidation-tools-title" type="button" role="tab" aria-selected="false" aria-controls="consolidation-tools" tabindex="-1">Consolidação</button>
-        <button class="tab" id="theme-tools-title" type="button" role="tab" aria-selected="false" aria-controls="theme-tools" tabindex="-1">Identidade visual</button>
-      </div>
-      <section class="dashboard-tool" id="participants-tools" role="tabpanel" aria-labelledby="participants-tools-title">
+    </div>
+    <div id="admin-config" class="admin-config" hidden>
+      <p class="config-back"><a href="/admin">← Voltar à lista de participantes</a></p>
+      <section class="card dashboard-tool" id="participants-tools" data-section="participantes" aria-labelledby="participants-tools-title" hidden>
+        <h2 id="participants-tools-title" tabindex="-1">Importar participantes</h2>
         <p>Importe um CSV separado por vírgula ou ponto e vírgula, com pelo menos um participante após o cabeçalho. Os dados cadastrais são atualizados sem apagar as etapas já concluídas.</p>
         <div class="dashboard-tool-actions">
           <a class="button secondary small" href="/api/participants/template" download="participantes-exemplo.csv">Baixar CSV de exemplo</a>
@@ -194,7 +189,7 @@
             <li><code>cpf</code> - opcional, 11 dígitos ou <code>xxx.xxx.xxx-xx</code> quando preenchido</li>
             <li>CPF e e-mail não ficam guardados: o sistema guarda só uma chave para reconhecê-los na busca e os 3 primeiros dígitos do CPF para conferência no guichê. Guarde a lista original fora do sistema. O CSV exportado traz as chaves (<code>email_hash</code>, <code>cpf_hash</code>, <code>cpf_inicio</code>) e pode ser reimportado no lugar de <code>email</code> e <code>cpf</code>.</li>
             <li><code>pais</code> - opcional, texto; arquivos sem esta coluna mantêm o país já cadastrado</li>
-            <li><code>pago</code> - opcional, situação do pagamento em texto (ex.: <code>Pago</code>, <code>Isento</code>, <code>Boleto pendente</code>); <code>1</code> e <code>0</code> valem <code>Pago</code> e <code>Não pago</code>; vazio fica <code>Não informado</code>. Quais situações liberam o credenciamento é definido na aba <strong>Pagamento</strong>.</li>
+            <li><code>pago</code> - opcional, situação do pagamento em texto (ex.: <code>Pago</code>, <code>Isento</code>, <code>Boleto pendente</code>); <code>1</code> e <code>0</code> valem <code>Pago</code> e <code>Não pago</code>; vazio fica <code>Não informado</code>. Quais situações liberam o credenciamento é definido em <a href="/admin/pagamento">Configurações → Pagamento</a>.</li>
             <li><code>prioridade</code> - opcional, <code>0</code> para não prioridade ou <code>1</code> para prioridade; com <code>1</code>, a pessoa vai para o guichê de prioridade, mesmo que a coluna <code>guiche</code> esteja preenchida</li>
             <li><code>id</code> - opcional, usado para atualizar o mesmo participante ao reimportar dados exportados</li>
             <li><code>guiche</code> - opcional, definido automaticamente pela prioridade ou pelas faixas quando ausente</li>
@@ -205,7 +200,8 @@
         </form>
         <p id="participants-import-status" class="muted" role="status"></p>
       </section>
-      <section class="dashboard-tool" id="guiches-tools" role="tabpanel" aria-labelledby="guiches-tools-title" hidden>
+      <section class="card dashboard-tool" id="guiches-tools" data-section="guiches" aria-labelledby="guiches-tools-title" hidden>
+        <h2 id="guiches-tools-title" tabindex="-1">Configuração dos guichês</h2>
         <p>Distribua todas as letras de A a Z, sem sobreposição. Ao salvar, quem ainda não começou a busca do kit passa para o novo guichê. Renomear um guichê (mesma faixa, outro nome) atualiza todos os participantes e atendentes daquele guichê. Guichês informados na coluna <code>guiche</code> do CSV são mantidos, exceto para quem tem prioridade.</p>
         <form id="balance-form" class="balance-form">
           <h3>Dividir pelo número de inscritos</h3>
@@ -226,7 +222,8 @@
         </div>
         <p id="ranges-status" class="muted" role="status"></p>
       </section>
-      <section class="dashboard-tool" id="payment-tools" role="tabpanel" aria-labelledby="payment-tools-title" hidden>
+      <section class="card dashboard-tool" id="payment-tools" data-section="pagamento" aria-labelledby="payment-tools-title" hidden>
+        <h2 id="payment-tools-title" tabindex="-1">Pagamento</h2>
         <p>As situações de pagamento vêm da coluna <code>pago</code> da importação (ex.: Pago, Isento, Boleto pendente). Marque as que <strong>liberam o credenciamento</strong>: quem está em outra situação chega com pendência e recebe orientação antes da busca do kit. Ao salvar, a regra vale na hora para todos.</p>
         <div id="payment-options" class="payment-options"></div>
         <form id="payment-add-form" class="payment-add">
@@ -238,7 +235,8 @@
         </div>
         <p id="payment-status" class="muted" role="status"></p>
       </section>
-      <section class="dashboard-tool" id="backup-tools" role="tabpanel" aria-labelledby="backup-tools-title" hidden>
+      <section class="card dashboard-tool" id="backup-tools" data-section="backup" aria-labelledby="backup-tools-title" hidden>
+        <h2 id="backup-tools-title" tabindex="-1">Backup e limpeza</h2>
         <p>O backup é um arquivo com todos os participantes, com a situação de cada um (quem já foi credenciado, horários, quem buscou), e todo o histórico de movimentações. Contas da equipe e configurações (guichês, pagamento, identidade visual) não entram e não são apagadas.</p>
         <div class="backup-block">
           <h3>Baixar backup</h3>
@@ -261,7 +259,8 @@
         </div>
         <p id="backup-status" class="muted" role="status"></p>
       </section>
-      <section class="dashboard-tool" id="consolidation-tools" role="tabpanel" aria-labelledby="consolidation-tools-title" hidden>
+      <section class="card dashboard-tool" id="consolidation-tools" data-section="consolidacao" aria-labelledby="consolidation-tools-title" hidden>
+        <h2 id="consolidation-tools-title" tabindex="-1">Consolidação</h2>
         <p>Cruze a lista original de inscrição (por exemplo, a exportação do ECOS) com o credenciamento. O resultado são duas listas para baixar: <strong>os credenciados da sua lista</strong>, só quem foi credenciado e tem linha na lista enviada, com as colunas dela; e <strong>os demais</strong>, quem está no credenciamento mas não na sua lista (inclusive quem foi cadastrado sem CPF ou e-mail). <strong>O arquivo é lido neste navegador e não fica guardado no sistema:</strong> só o CPF e o e-mail de cada linha vão ao servidor, para comparar com as chaves guardadas, e não são gravados. Ao recarregar a página, o resultado some; baixe os arquivos se quiser guardá-lo.</p>
         <p class="muted">CSV em UTF-8 ou Windows-1252, separado por ponto e vírgula, vírgula ou tabulação, com as colunas Nome e E-mail e, de preferência, CPF e a data da última movimentação (os nomes valem sem diferenciar maiúsculas, acentos e hífens). Cada linha é procurada pelo nome + e-mail, pelo CPF (inclusive o que perdeu os zeros à esquerda no Excel), pelo e-mail e, por fim, pelo nome com os 3 primeiros dígitos do CPF. Quem está em mais de uma linha (mesmo CPF ou e-mail) conta pela da última movimentação. Se ela estiver cancelada, a pessoa fica fora das contas, salvo se foi credenciada: aí a inscrição estava certa e ela conta. O que não bater recebe sugestões para você confirmar.</p>
         <form id="consolidation-form" class="import-form">
@@ -272,7 +271,8 @@
         <p id="consolidation-status" class="muted" role="status"></p>
         <div id="consolidation-result" class="consolidation-result" hidden></div>
       </section>
-      <section class="dashboard-tool" id="theme-tools" role="tabpanel" aria-labelledby="theme-tools-title" hidden>
+      <section class="card dashboard-tool" id="theme-tools" data-section="identidade" aria-labelledby="theme-tools-title" hidden>
+        <h2 id="theme-tools-title" tabindex="-1">Identidade visual</h2>
         <p>Nome, cores e logo do evento em todas as páginas, inclusive a pública. As mudanças valem na hora para quem abrir ou recarregar uma página. <span id="theme-origin" class="muted"></span></p>
         <div class="theme-layout">
           <form id="theme-form" class="theme-form">
@@ -315,9 +315,8 @@
         </div>
         <p id="theme-status" class="muted" role="status"></p>
       </section>
-      </div>
-      <section class="card dashboard-tool dashboard-block" data-block="google-sheets" data-block-title="Backup no Google Sheets" aria-labelledby="google-sheets-title">
-        <h2 id="google-sheets-title">Backup no Google Sheets</h2>
+      <section class="card dashboard-tool" id="google-sheets-tools" data-section="google-sheets" aria-labelledby="google-sheets-title" hidden>
+        <h2 id="google-sheets-title" tabindex="-1">Backup no Google Sheets</h2>
         <p>Crie uma planilha na conta que deve receber os dados. Ela continuará sendo uma cópia de segurança; o banco local é a fonte principal.</p>
         <ol class="setup-steps">
           <li>Na planilha, abra <strong>Extensões → Apps Script</strong>.</li>

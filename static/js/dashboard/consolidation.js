@@ -15,7 +15,7 @@ const HELP = {
   nao_credenciado: 'A pessoa está na lista e ainda não retirou o kit. Para resolver, mostre-as na lista ' +
     'de participantes e mude a situação na linha ou em lote.',
   nao_encontrado: 'Nenhuma pessoa do credenciamento com esse CPF, e-mail ou nome. Se uma sugestão for a mesma ' +
-    'pessoa, confirme; se a pessoa não existe no credenciamento, inclua-a pela aba Participantes.'
+    'pessoa, confirme; se a pessoa não existe no credenciamento, inclua-a em Configurações → Importar participantes.'
 };
 
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;

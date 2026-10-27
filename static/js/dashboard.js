@@ -1,4 +1,4 @@
-// Painel detalhado da coordenação: números, tabela de participantes e ferramentas.
+// Admin da coordenação: números, tabela de participantes e configurações (uma tela para cada).
 import {$, api, clockTime, el, loadEventConfig, message, requireSession, statusNames} from './common.js';
 import {initBackup} from './dashboard/backup.js';
 import {initBatch, renderBatch} from './dashboard/batch.js';
@@ -8,7 +8,8 @@ import {initPayment} from './dashboard/payment.js';
 import {changeSort, fillCountryFilter, fillDeskFilter, fillPaymentFilter, loadSort, renderDashboard,
   renderDashboardKeepingFocus, renderDeskStats, state} from './dashboard/table.js';
 import {initTheme} from './dashboard/theme.js';
-import {initTabs, initTools} from './dashboard/tools.js';
+import {initTools} from './dashboard/tools.js';
+import {initViews, showView} from './dashboard/views.js';
 
 const FILTERS = ['status-filter', 'priority-filter', 'payment-filter', 'country-filter', 'desk-filter'];
 
@@ -119,6 +120,7 @@ function searchChanged() {
 
 // Mostra na tabela só estas pessoas (ex.: pendências da consolidação); digitar na busca desfaz.
 function showParticipants(label, ids) {
+  showView('/admin', false);
   $('dashboard-filter').value = label;
   state.lookup = {text: label, ids: new Set(ids)};
   for (const id of FILTERS) $(id).value = '';
@@ -277,7 +279,7 @@ function initTableEvents() {
 
 await loadEventConfig();
 if (await requireSession(['admin'])) {
-  initTabs();
+  initViews();
   initLayout();
   initFilters();
   initTableEvents();

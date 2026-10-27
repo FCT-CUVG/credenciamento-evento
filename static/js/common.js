@@ -76,44 +76,71 @@ export async function loadEventConfig() {
   }
 }
 
-export const homeFor = role => role === 'volunteer' ? '/busca' : role === 'attendant' ? '/fila' : '/painel';
+export const homeFor = role => role === 'volunteer' ? '/separacao' : role === 'attendant' ? '/fila' : '/admin';
+
+// Configurações do admin: cada uma tem endereço próprio e aparece no menu "Configurações".
+export const ADMIN_SECTIONS = [
+  ['participantes', 'Importar participantes'],
+  ['guiches', 'Configuração dos guichês'],
+  ['pagamento', 'Pagamento'],
+  ['backup', 'Backup e limpeza'],
+  ['consolidacao', 'Consolidação'],
+  ['identidade', 'Identidade visual'],
+  ['google-sheets', 'Backup no Google Sheets'],
+];
+
+const navLink = (label, href) => {
+  const a = el('a', '', label);
+  a.href = href;
+  return a;
+};
+
+// Menu suspenso do cabeçalho; fecha ao clicar fora, com Esc ou ao escolher uma opção.
+function navMenu(label, options) {
+  const menu = el('details', 'nav-menu'), choices = el('div', 'nav-options');
+  menu.append(el('summary', '', label));
+  choices.append(...options);
+  menu.append(choices);
+  document.addEventListener('click', event => { if (!menu.contains(event.target)) menu.open = false; });
+  menu.addEventListener('keydown', event => { if (event.key === 'Escape') menu.open = false; });
+  choices.addEventListener('click', event => { if (event.target.closest('a')) menu.open = false; });
+  return menu;
+}
+
+// Destaca no menu a página aberta (também quando o admin troca de tela sem recarregar).
+export function markCurrentPage() {
+  const here = location.pathname + location.search;
+  for (const a of document.querySelectorAll('#team-links a')) {
+    if (a.getAttribute('href') === here) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  }
+}
 
 export async function renderTeamNav() {
   const nav = $('team-links');
   if (!nav) return;
-  nav.replaceChildren();
-  const link = (label, href) => {
-    const a = el('a', '', label);
-    a.href = href;
-    if (location.pathname + location.search === href) a.setAttribute('aria-current', 'page');
-    return a;
-  };
-  nav.append(link('Separação', '/busca'));
-  const menu = el('details', 'guiche-menu');
-  menu.append(el('summary', '', 'Guichês'));
-  const choices = el('div', 'guiche-options');
-  choices.append(link('Todos os guichês', '/fila?guiche=all'));
+  const desks = [navLink('Todos os guichês', '/fila?guiche=all')];
   try {
     const data = await api('/api/guiches');
     // Com guichê de prioridade, uma opção junta só os guichês gerais (por letras).
     if (data.guiches.some(desk => desk.priority)) {
-      choices.append(link('Guichês gerais (sem prioridade)', '/fila?guiche=all&exclude=priority'));
+      desks.push(navLink('Guichês gerais (sem prioridade)', '/fila?guiche=all&exclude=priority'));
     }
-    choices.append(el('hr', 'guiche-separator'));
+    desks.push(el('hr', 'nav-separator'));
     for (const desk of data.guiches) {
       const detail = desk.priority ? (/priorid/i.test(desk.id) ? '' : ' · Prioridade')
         : desk.ranges.length ? ' · ' + desk.ranges.join(', ') : '';
-      choices.append(link('Guichê ' + desk.id + detail, '/fila?guiche=' + encodeURIComponent(desk.id)));
+      desks.push(navLink('Guichê ' + desk.id + detail, '/fila?guiche=' + encodeURIComponent(desk.id)));
     }
   } catch (err) {
     message('page-error', err.message);
   }
-  menu.append(choices);
-  // Fecha o menu ao clicar fora dele ou com Esc.
-  document.addEventListener('click', event => { if (!menu.contains(event.target)) menu.open = false; });
-  menu.addEventListener('keydown', event => { if (event.key === 'Escape') menu.open = false; });
-  nav.append(menu, link('Painel resumido', '/painel/resumo'));
-  if (session.user.role === 'admin') nav.append(link('Painel detalhado', '/painel'));
+  nav.replaceChildren(navLink('Separação', '/separacao'), navMenu('Guichês', desks), navLink('Dashboard', '/dashboard'));
+  if (session.user.role === 'admin') {
+    nav.append(navLink('Admin', '/admin'),
+      navMenu('Configurações', ADMIN_SECTIONS.map(([slug, label]) => navLink(label, '/admin/' + slug))));
+  }
+  markCurrentPage();
 }
 
 // Exige login com um dos papéis; senão, redireciona para o login ou para a tela do papel.
